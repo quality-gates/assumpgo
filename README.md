@@ -1,6 +1,6 @@
 # assumpgo
 
-[![Mutation Testing](https://github.com/quality-gates/assumpgo/actions/workflows/mutation.yml/badge.svg)](https://github.com/quality-gates/assumpgo/actions/workflows/mutation.yml) [![Security](https://github.com/quality-gates/assumpgo/actions/workflows/security.yml/badge.svg)](https://github.com/quality-gates/assumpgo/actions/workflows/security.yml) [![Go Report Card](https://github.com/quality-gates/assumpgo/actions/workflows/goreportcard.yml/badge.svg)](https://github.com/quality-gates/assumpgo/actions/workflows/goreportcard.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Go 1.26+](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](https://go.dev)
+[![Go Reference](https://pkg.go.dev/badge/github.com/quality-gates/assumpgo.svg)](https://pkg.go.dev/github.com/quality-gates/assumpgo) [![Mutation Testing](https://github.com/quality-gates/assumpgo/actions/workflows/mutation.yml/badge.svg)](https://github.com/quality-gates/assumpgo/actions/workflows/mutation.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Go 1.26+](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](https://go.dev)
 
 Static analysis for Go that finds weak **assumptions** in your boolean checks
 and reports how many of your boolean expressions are assumptions rather than
