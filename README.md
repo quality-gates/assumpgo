@@ -1,5 +1,7 @@
 # assumpgo
 
+[![Mutation Testing](https://github.com/quality-gates/assumpgo/actions/workflows/mutation.yml/badge.svg)](https://github.com/quality-gates/assumpgo/actions/workflows/mutation.yml) [![Security](https://github.com/quality-gates/assumpgo/actions/workflows/security.yml/badge.svg)](https://github.com/quality-gates/assumpgo/actions/workflows/security.yml) [![Go Report Card](https://github.com/quality-gates/assumpgo/actions/workflows/goreportcard.yml/badge.svg)](https://github.com/quality-gates/assumpgo/actions/workflows/goreportcard.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Go 1.26+](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](https://go.dev)
+
 Static analysis for Go that finds weak **assumptions** in your boolean checks
 and reports how many of your boolean expressions are assumptions rather than
 assertions.
@@ -116,6 +118,21 @@ go vet ./...
 
 The test fixtures in `testdata/fixtures/` are valid Go files used to calibrate
 the analyser.
+
+## Continuous integration
+
+Quality gates run on every push and pull request, modelled on
+[quality-gates/mutago](https://github.com/quality-gates/mutago):
+
+- **Mutation testing** — runs [mutago](https://github.com/quality-gates/mutago)
+  on assumpgo itself with the same gates mutago holds itself to
+  (`--min-msi 75 --min-covered-msi 80`, coverage-aware).
+- **Security** — `govulncheck` against the Go vulnerability database, also on a
+  weekly schedule.
+- **Go Report Card** — enforces an A+ grade (`gofmt -s`, `go vet`, `gocyclo`,
+  license, `ineffassign`).
+
+Dependabot keeps the Go modules and pinned GitHub Actions up to date.
 
 ## License
 

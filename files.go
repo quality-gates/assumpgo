@@ -44,10 +44,6 @@ func CollectGoFiles(fromPath string) ([]string, error) {
 // flat list of .go files. Used for the --exclude flag.
 func CollectFromList(list string) ([]string, error) {
 	var paths []string
-	if strings.TrimSpace(list) == "" {
-		return paths, nil
-	}
-
 	for _, item := range strings.Split(list, ",") {
 		item = strings.TrimSpace(item)
 		if item == "" {
