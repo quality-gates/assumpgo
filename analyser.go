@@ -104,10 +104,6 @@ func (a *Analyser) analyseFile(path string, result *Result) error {
 	lines := strings.Split(string(src), "\n")
 
 	ast.Inspect(f, func(node ast.Node) bool {
-		if node == nil {
-			return false
-		}
-
 		if a.detector.IsBoolExpression(node) {
 			result.increaseBoolExpressionsCount()
 		}

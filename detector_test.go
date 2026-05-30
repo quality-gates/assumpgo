@@ -29,6 +29,12 @@ func parseStmt(t *testing.T, src string) ast.Stmt {
 	return body.List[0]
 }
 
+func TestNewDetectorNotNil(t *testing.T) {
+	if NewDetector() == nil {
+		t.Fatal("NewDetector() returned nil")
+	}
+}
+
 func TestScanDetectsNotEqual(t *testing.T) {
 	d := NewDetector()
 	for _, src := range []string{"x != nil", "nil != x", "x != 0", `x != "test"`} {
@@ -48,6 +54,13 @@ func TestScanDetectsBooleanNotVariable(t *testing.T) {
 	}
 	if d.Scan(parseExpr(t, "!helper(x)")) {
 		t.Error("expected !helper(x) to be ignored (call, not a variable)")
+	}
+	// A unary expression that is not a boolean-not must never be flagged,
+	// even when its operand is a variable.
+	for _, src := range []string{"-x", "*p", "&x", "<-ch"} {
+		if d.Scan(parseExpr(t, src)) {
+			t.Errorf("expected %q (non-`!` unary) to be ignored", src)
+		}
 	}
 }
 
@@ -69,6 +82,25 @@ func TestScanDetectsLogicalWithVariable(t *testing.T) {
 	for _, src := range []string{`x && x == "test"`, `x == "test" && x`, "x || y != nil"} {
 		if !d.Scan(parseExpr(t, src)) {
 			t.Errorf("expected %q to be an assumption", src)
+		}
+	}
+}
+
+// TestScanLogicalRequiresVariableAndComparison checks both halves of the
+// bidirectional rule: a `&&`/`||` is only an assumption when exactly one side
+// is a bare variable and the other is a (binary) comparison.
+func TestScanLogicalRequiresVariableAndComparison(t *testing.T) {
+	d := NewDetector()
+	// Two bare variables: no comparison, not an assumption.
+	for _, src := range []string{"x && y", "x || y"} {
+		if d.Scan(parseExpr(t, src)) {
+			t.Errorf("expected %q (two variables) not to be an assumption", src)
+		}
+	}
+	// Two comparisons: no bare variable, not an assumption.
+	for _, src := range []string{`x == 1 && y == 2`, `x != 1 || y != 2`} {
+		if d.Scan(parseExpr(t, src)) {
+			t.Errorf("expected %q (two comparisons) not to be an assumption", src)
 		}
 	}
 }
