@@ -89,8 +89,11 @@ Follow these steps in order when landing a change:
 3. **Run the mutation gate** — the command in the section above. Exit 0 = pass,
    exit 4 = escaped mutants. If a mutant escaped, prefer adding a test that
    kills it over weakening the gate. Some escapes are genuinely unkillable
-   (error guards on writes to an in-memory buffer); leave those and rely on the
-   thresholds.
+   *equivalent* mutants; leave those and rely on the thresholds. Known examples:
+   error guards on writes to an in-memory buffer (which never error), and
+   mutago's `composite/field-clear` clearing the `detector` field in
+   `NewAnalyser` — `Detector` is a stateless empty struct whose methods never
+   dereference the receiver, so a nil detector is behaviourally identical.
 4. **Manual smoke test** — build the binary and actually run it. Do not skip
    this:
    ```bash
