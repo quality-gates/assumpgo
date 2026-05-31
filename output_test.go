@@ -66,6 +66,27 @@ func TestPrettyOutputWithAssumptions(t *testing.T) {
 	}
 }
 
+// TestPrettyOutputSingleAssumption guards the `AssumptionsCount() > 0` table
+// boundary: a result with exactly one assumption must still render the table,
+// not just collapse to the summary line.
+func TestPrettyOutputSingleAssumption(t *testing.T) {
+	r := &Result{boolExpressionsCount: 4}
+	r.assumptions = append(r.assumptions, Assumption{File: "a.go", Line: 3, Message: "if x != nil {"})
+
+	var buf bytes.Buffer
+	if err := (PrettyOutput{}).Output(&buf, r); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, "|") || !strings.Contains(out, "if x != nil {") {
+		t.Errorf("expected a table for a single assumption:\n%s", out)
+	}
+	if !strings.HasSuffix(out, "1 out of 4 boolean expressions are assumptions (25%)\n") {
+		t.Errorf("unexpected summary line:\n%s", out)
+	}
+}
+
 func TestPrettyOutputWithoutAssumptions(t *testing.T) {
 	r := &Result{boolExpressionsCount: 5}
 
