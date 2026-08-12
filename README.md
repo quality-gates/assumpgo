@@ -1,139 +1,94 @@
 # assumpgo
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/quality-gates/assumpgo.svg)](https://pkg.go.dev/github.com/quality-gates/assumpgo) [![Mutation Testing](https://github.com/quality-gates/assumpgo/actions/workflows/mutation.yml/badge.svg)](https://github.com/quality-gates/assumpgo/actions/workflows/mutation.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Go 1.26+](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](https://go.dev)
+Catch weak assumptions in Go boolean checks before they calcify: negative
+comparisons and bare variables used as conditions where a positive assertion
+would pin the intent.
 
-Static analysis for Go that finds weak **assumptions** in your boolean checks
-and reports how many of your boolean expressions are assumptions rather than
-assertions.
-
-It is a Go port of [rskuipers/php-assumptions](https://github.com/rskuipers/php-assumptions),
-inspired by the blog post
+`assumpgo` is a local CLI. It walks Go source, never builds or runs your
+project, and needs no project dependencies installed. Go 1.26+. Port of
+[php-assumptions](https://github.com/rskuipers/php-assumptions), inspired by
 [*From assumptions to assertions*](https://rskuipers.com/blog/from-assumptions-to-assertions).
 
-## The idea
+## Quick start
 
-The blog post argues that negative, "blacklisting" checks are *assumptions*:
-
-```go
-if dog != nil {
-    dog.Woof() // we ASSUME a non-nil pointer is a usable Dog
-}
+```console
+go install github.com/quality-gates/assumpgo/cmd/assumpgo@latest
+assumpgo ./...
 ```
 
-You should *assert* your expectations instead. In Go that means a type
-assertion / type switch (the analog of PHP's `instanceof`):
+That scans the tree and prints assumption findings plus the assumption ratio.
+Exit `0` is clean, `110` means assumptions found, `100` means usage error.
 
-```go
-if d, ok := animal.(*Dog); ok {
-    d.Woof() // we ASSERT it is a Dog before using it
-}
+Common next steps:
+
+```console
+assumpgo -format xml ./...
+assumpgo -exclude vendor,testdata ./mypackage
+assumpgo -output report.xml -format xml ./...
 ```
 
-`assumpgo` finds the assumptions and tells you what fraction of your boolean
-expressions they make up.
+Full usage, patterns, and PHP mapping notes: [docs/usage.md](docs/usage.md).
 
 ## Install
 
-```sh
+```console
 go install github.com/quality-gates/assumpgo/cmd/assumpgo@latest
-```
-
-Or build from a clone:
-
-```sh
-go build -o assumpgo ./cmd/assumpgo
-```
-
-## Usage
-
-```sh
-assumpgo <path>                 # a single .go file or a directory (recursed)
-assumpgo -format xml <path>     # checkstyle-style XML, e.g. for CI
-assumpgo -exclude a.go,vendor <path>
-assumpgo -output report.xml -format xml <path>
 assumpgo -version
 ```
 
-Example:
+From a local checkout:
 
-```
-$ assumpgo ./mypackage
-assumpgo analyser v0.1.0 by quality-gates
-
--------------------------------------------------
-| file        | line | message                  |
-=================================================
-| dog.go      | 12   | if dog != nil {          |
--------------------------------------------------
-
-1 out of 4 boolean expressions are assumptions (25%)
+```console
+go build -o assumpgo ./cmd/assumpgo
 ```
 
-### Exit codes
+## Tune the gate
 
-| Code | Meaning                          |
-|------|----------------------------------|
-| 0    | No assumptions found             |
-| 110  | One or more assumptions found    |
-| 100  | Usage error (e.g. missing path)  |
+Point at a package or file. Exclude noisy paths with `-exclude`. Prefer
+checkstyle XML when a CI system needs a machine report:
 
-This makes it usable as a quality gate in CI.
+```console
+assumpgo -format xml -exclude vendor,generated ./...
+```
 
-## What counts as an assumption
+There is no ruleset file: the analyzer’s pattern set is fixed. See
+[docs/usage.md](docs/usage.md) for what counts as an assumption.
 
-A boolean node is reported as an assumption when it is any of:
+## Suppress one intentional exception
 
-| Pattern                              | Example                     |
-|--------------------------------------|-----------------------------|
-| A negative comparison `!=`           | `dog != nil`, `n != 0`      |
-| A bare variable used as a condition  | `if ready {`, `for running {` |
-| Boolean-not of a variable            | `!ready`                    |
-| `&&` / `||` mixing a bare variable with a comparison | `x && x == "test"` |
+assumpgo has no per-line disable comment. Skip paths with `-exclude`, or fix
+the check to a positive assertion (type assert / comma-ok / positive `==`) so
+it is no longer an assumption.
 
-The **denominator** (boolean expressions) counts every `if`, every `for` with a
-condition, and every `&&` / `||`.
+## Drop it into CI
 
-### How this maps from PHP
+```yaml
+# GitHub Actions
+- uses: actions/setup-go@v6
+  with:
+    go-version-file: go.mod
+- run: go install github.com/quality-gates/assumpgo/cmd/assumpgo@latest
+- run: assumpgo ./...
+```
 
-php-assumptions flags the loose `==`, the loose `!=` and the strict-negative
-`!==`, but deliberately **not** the strict-positive `===`. Go has a single,
-strict set of comparison operators, so:
+```yaml
+# GitLab / generic XML
+script: assumpgo -format xml -output gl-assumpgo.xml ./...
+```
 
-- Go's `==` is the analog of PHP's `===` (strict positive) — treated as an
-  **assertion**, so it is **not** flagged. This includes `x == nil`, which is
-  the idiomatic early-return guard.
-- Go's `!=` is the negative, blacklisting comparison the blog post warns about
-  (the `$user !== null` example) — it **is** flagged.
+## Maintainers
 
-The idiomatic comma-ok assertion (`if v, ok := x.(*T); ok`) binds its variable
-in the `if` init statement and is therefore **not** treated as a bare-variable
-assumption.
+Usage reference: [docs/usage.md](docs/usage.md).
 
-## Development
+Development checks:
 
-```sh
+```console
 go test ./...
 go vet ./...
 ```
 
-The test fixtures in `testdata/fixtures/` are valid Go files used to calibrate
-the analyser.
-
-## Continuous integration
-
-Quality gates run on every push and pull request, modelled on
-[quality-gates/mutago](https://github.com/quality-gates/mutago):
-
-- **Mutation testing** — runs [mutago](https://github.com/quality-gates/mutago)
-  on assumpgo itself with the same gates mutago holds itself to
-  (`--min-msi 75 --min-covered-msi 80`, coverage-aware).
-- **Security** — `govulncheck` against the Go vulnerability database, also on a
-  weekly schedule.
-- **Go Report Card** — enforces an A+ grade (`gofmt -s`, `go vet`, `gocyclo`,
-  license, `ineffassign`).
-
-Dependabot keeps the Go modules and pinned GitHub Actions up to date.
+CI also runs mutago mutation gates, govulncheck, and Go Report Card A+.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
