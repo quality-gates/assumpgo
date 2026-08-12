@@ -1,3 +1,3 @@
 module github.com/quality-gates/assumpgo
 
-go 1.26.3
+go 1.26.5
