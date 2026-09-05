@@ -1,4 +1,4 @@
-# Runtime image: docker build -t assumpgo . && docker run --rm -v "$PWD":/code assumpgo ./...
+# Runtime image: docker build -t assumpgo . && docker run --rm -v "$PWD":/code assumpgo
 FROM golang:alpine AS build
 WORKDIR /src
 COPY go.mod ./
@@ -10,4 +10,5 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /code
 COPY --from=build /app/assumpgo /usr/local/bin/assumpgo
 ENTRYPOINT ["assumpgo"]
-CMD ["./..."]
+CMD ["."]
+
