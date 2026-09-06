@@ -14,7 +14,7 @@ Example:
 
 ```text
 $ assumpgo ./mypackage
-assumpgo analyser v0.1.0 by quality-gates
+assumpgo analyser v0.1.1 by quality-gates
 
 -------------------------------------------------
 | file        | line | message                  |
