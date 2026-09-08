@@ -160,3 +160,47 @@ func TestMultipleTargetsErrorOnMissingPath(t *testing.T) {
 		t.Errorf("expected error message on stderr, got:\n%s", stderr)
 	}
 }
+
+func TestExcludePathSyntaxVariations(t *testing.T) {
+	tests := []struct {
+		name    string
+		exclude string
+		target  string
+	}{
+		{
+			name:    "exclude with leading dot-slash",
+			exclude: "." + string(filepath.Separator) + fixture("dog.go"),
+			target:  fixture("dog.go"),
+		},
+		{
+			name:    "target with leading dot-slash",
+			exclude: fixture("dog.go"),
+			target:  "." + string(filepath.Separator) + fixture("dog.go"),
+		},
+		{
+			name:    "exclude with redundant separators",
+			exclude: ".." + string(filepath.Separator) + ".." + string(filepath.Separator) + "testdata" + string(filepath.Separator) + string(filepath.Separator) + "fixtures" + string(filepath.Separator) + "dog.go",
+			target:  fixture("dog.go"),
+		},
+		{
+			name:    "target with redundant separators",
+			exclude: fixture("dog.go"),
+			target:  ".." + string(filepath.Separator) + ".." + string(filepath.Separator) + "testdata" + string(filepath.Separator) + string(filepath.Separator) + "fixtures" + string(filepath.Separator) + "dog.go",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout, stderr, code := runCapture(t, "-exclude", tt.exclude, tt.target)
+			if code != exitOK {
+				t.Fatalf("exit = %d, want %d (stderr: %s, stdout: %s)", code, exitOK, stderr, stdout)
+			}
+			if strings.Contains(stdout, "dog.go |") {
+				t.Errorf("dog.go was not excluded:\n%s", stdout)
+			}
+			if !strings.Contains(stdout, "0 out of 0 boolean expressions are assumptions (0%)") {
+				t.Errorf("unexpected summary line:\n%s", stdout)
+			}
+		})
+	}
+}

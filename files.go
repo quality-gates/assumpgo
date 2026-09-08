@@ -7,21 +7,22 @@ import (
 	"strings"
 )
 
-// CollectGoFiles returns the list of .go files reachable from fromPath. If
-// fromPath is a single file it is returned as-is; if it is a directory it is
-// walked recursively.
+// CollectGoFiles returns the list of .go files reachable from fromPath,
+// cleaned using filepath.Clean. If fromPath is a single file it is returned;
+// if it is a directory it is walked recursively.
 func CollectGoFiles(fromPath string) ([]string, error) {
 	info, err := os.Stat(fromPath)
 	if err != nil {
 		return nil, err
 	}
 
+	cleanPath := filepath.Clean(fromPath)
 	if !info.IsDir() {
-		return []string{fromPath}, nil
+		return []string{cleanPath}, nil
 	}
 
 	var paths []string
-	err = filepath.WalkDir(fromPath, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(cleanPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -29,7 +30,7 @@ func CollectGoFiles(fromPath string) ([]string, error) {
 			return nil
 		}
 		if strings.HasSuffix(path, ".go") {
-			paths = append(paths, path)
+			paths = append(paths, filepath.Clean(path))
 		}
 		return nil
 	})
@@ -41,9 +42,10 @@ func CollectGoFiles(fromPath string) ([]string, error) {
 }
 
 // CollectFromList expands a comma separated list of files/directories into a
-// flat list of .go files. Used for the --exclude flag.
+// deduplicated list of cleaned .go files. Used for the --exclude flag.
 func CollectFromList(list string) ([]string, error) {
 	var paths []string
+	seen := make(map[string]bool)
 	for _, item := range strings.Split(list, ",") {
 		item = strings.TrimSpace(item)
 		if item == "" {
@@ -53,7 +55,13 @@ func CollectFromList(list string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		paths = append(paths, found...)
+		for _, p := range found {
+			clean := filepath.Clean(p)
+			if !seen[clean] {
+				seen[clean] = true
+				paths = append(paths, clean)
+			}
+		}
 	}
 
 	return paths, nil

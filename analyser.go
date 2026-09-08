@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -66,7 +67,7 @@ type Analyser struct {
 func NewAnalyser(detector *Detector, excludes []string) *Analyser {
 	set := make(map[string]struct{}, len(excludes))
 	for _, e := range excludes {
-		set[e] = struct{}{}
+		set[filepath.Clean(e)] = struct{}{}
 	}
 
 	return &Analyser{detector: detector, excludes: set}
@@ -77,11 +78,12 @@ func (a *Analyser) Analyse(files []string) (*Result, error) {
 	result := &Result{}
 
 	for _, file := range files {
-		if _, excluded := a.excludes[file]; excluded {
+		clean := filepath.Clean(file)
+		if _, excluded := a.excludes[clean]; excluded {
 			continue
 		}
 
-		if err := a.analyseFile(file, result); err != nil {
+		if err := a.analyseFile(clean, result); err != nil {
 			return nil, err
 		}
 	}
