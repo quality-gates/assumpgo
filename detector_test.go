@@ -112,6 +112,22 @@ func TestScanLogicalRequiresVariableAndComparison(t *testing.T) {
 			t.Errorf("expected %q (two variables) not to be an assumption", src)
 		}
 	}
+	// Chains of bare variables (issue #16): no comparison anywhere in the
+	// chain, so not an assumption. `x && y && z` parses as `(x && y) && z`,
+	// whose outer node has a bare variable on one side and a logical binary
+	// expression on the other.
+	for _, src := range []string{
+		"x && y && z",
+		"x || y || z",
+		"x && y && z && w",
+		"x || y || z || w",
+		"x && y || z",
+		"x && (y && z)",
+	} {
+		if d.Scan(parseExpr(t, src)) {
+			t.Errorf("expected %q (chain of bare variables) not to be an assumption", src)
+		}
+	}
 	// Two comparisons: no bare variable, not an assumption.
 	for _, src := range []string{`x == 1 && y == 2`, `x != 1 || y != 2`} {
 		if d.Scan(parseExpr(t, src)) {

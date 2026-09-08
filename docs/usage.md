@@ -45,6 +45,9 @@ A boolean node is reported as an assumption when it is any of:
 | Boolean-not of a variable | `!ready` |
 | `&&` / `||` mixing a bare variable with a comparison | `x && x == "test"` |
 
+Chains of bare variables with no comparison anywhere — `x && y && z`,
+`x || y || z` — mix nothing and are **not** flagged.
+
 The **denominator** (boolean expressions) counts every `if`, every `for` with a
 condition, and every `&&` / `||`.
 
