@@ -100,3 +100,16 @@ func CollectTargets(targets []string) ([]string, error) {
 
 	return paths, nil
 }
+
+// ContainsPath reports whether path matches any of paths, comparing absolute
+// forms so relative and absolute spellings of the same file both match.
+func ContainsPath(paths []string, path string) bool {
+	target := identityPath(path)
+	for _, p := range paths {
+		if identityPath(p) == target {
+			return true
+		}
+	}
+
+	return false
+}
