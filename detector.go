@@ -82,12 +82,36 @@ func (d *Detector) isVariableExpression(node ast.Node) bool {
 
 // bidirectionalCheck reports whether one operand of a `&&`/`||` is a bare
 // variable and the other is a binary expression, in either order. Mirrors the
-// PHP Variable + BinaryOp bidirectional check.
+// PHP Variable + BinaryOp bidirectional check. A binary operand that is itself
+// a chain of bare variables (`x && y && z` parses as `(x && y) && z`) does not
+// count: it carries no comparison, so the chain mixes nothing.
 func (d *Detector) bidirectionalCheck(n *ast.BinaryExpr) bool {
 	left := unwrap(n.X)
 	right := unwrap(n.Y)
 
-	return (isVarIdent(left) && isBinary(right)) || (isVarIdent(right) && isBinary(left))
+	return (isVarIdent(left) && isBinary(right) && !isPureVarLogicalChain(right)) ||
+		(isVarIdent(right) && isBinary(left) && !isPureVarLogicalChain(left))
+}
+
+// isPureVarLogicalChain reports whether expr is a `&&`/`||` expression built
+// entirely from bare variables, e.g. the `(x && y)` in `x && y && z`. Such a
+// chain contains no comparison, so combining it with another bare variable is
+// not the "variable mixed with a comparison" pattern the assumption rule
+// targets. Chains containing a literal (`x && true`), a call or a comparison
+// are not pure.
+func isPureVarLogicalChain(expr ast.Node) bool {
+	switch e := unwrap(expr).(type) {
+	case *ast.Ident:
+		return isVarIdent(e)
+	case *ast.BinaryExpr:
+		if e.Op != token.LAND && e.Op != token.LOR {
+			return false
+		}
+
+		return isPureVarLogicalChain(e.X) && isPureVarLogicalChain(e.Y)
+	}
+
+	return false
 }
 
 // isVarIdent reports whether expr is a bare identifier that refers to a
