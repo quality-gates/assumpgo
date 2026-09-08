@@ -72,13 +72,9 @@ func (d *Detector) isVariableExpression(node ast.Node) bool {
 			return true
 		}
 	case *ast.IfStmt:
-		// `if x { ... }` is a bare-variable assumption, but the comma-ok /
-		// assignment idiom (`if _, ok := v.(*Dog); ok`) is the idiomatic Go
-		// *assertion*, so we ignore bare conditions that bind their variable in
-		// the Init statement.
-		return n.Init == nil && isVarIdent(n.Cond)
+		return isBareVariableCond(n.Init, n.Cond)
 	case *ast.ForStmt:
-		return n.Init == nil && isVarIdent(n.Cond)
+		return isBareVariableCond(n.Init, n.Cond)
 	}
 
 	return false
@@ -125,6 +121,17 @@ func unwrap(node ast.Node) ast.Node {
 		}
 		node = paren.X
 	}
+}
+
+// isBareVariableCond reports whether cond is a bare variable condition that is
+// not bound by a comma-ok assignment in init.
+func isBareVariableCond(init ast.Stmt, cond ast.Expr) bool {
+	if !isVarIdent(cond) {
+		return false
+	}
+
+	ident := unwrap(cond).(*ast.Ident)
+	return ident.Name != commaOkVarName(init)
 }
 
 // invertedCommaOkCond returns the unary NOT expression when cond is an

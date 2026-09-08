@@ -72,6 +72,21 @@ func TestScanDetectsBareVariableConditions(t *testing.T) {
 	if !d.Scan(parseStmt(t, "for x {}")) {
 		t.Error("expected `for x` to be an assumption")
 	}
+	if !d.Scan(parseStmt(t, "if doSomething(); running {}")) {
+		t.Error("expected `if doSomething(); running` to be an assumption")
+	}
+	if !d.Scan(parseStmt(t, "for i := 0; running; i++ {}")) {
+		t.Error("expected `for i := 0; running; i++` to be an assumption")
+	}
+	if !d.Scan(parseStmt(t, "if x := 1; running {}")) {
+		t.Error("expected `if x := 1; running` to be an assumption")
+	}
+	if !d.Scan(parseStmt(t, "if running := isRunning(); running {}")) {
+		t.Error("expected `if running := isRunning(); running` to be an assumption")
+	}
+	if !d.Scan(parseStmt(t, "if val, ok := m[k]; val {}")) {
+		t.Error("expected non-ok variable in comma-ok to be an assumption")
+	}
 	if d.Scan(parseStmt(t, "if x == y {}")) {
 		t.Error("expected `if x == y` not to be flagged via the bare-variable rule")
 	}
@@ -120,8 +135,17 @@ func TestScanIgnoresStrictEquality(t *testing.T) {
 
 func TestScanIgnoresTypeAssertion(t *testing.T) {
 	d := NewDetector()
-	if d.Scan(parseStmt(t, "if _, ok := v.(*Dog); ok {}")) {
-		t.Error("expected a type assertion guard not to be an assumption")
+	validAssertions := []string{
+		"if _, ok := v.(*Dog); ok {}",
+		"if val, ok := m[k]; ok {}",
+		"if _, ok = v.(*Dog); ok {}",
+		"for _, ok := m[k]; ok; {}",
+		"if _, (ok) := v.(*Dog); (ok) {}",
+	}
+	for _, src := range validAssertions {
+		if d.Scan(parseStmt(t, src)) {
+			t.Errorf("expected %q not to be an assumption", src)
+		}
 	}
 }
 
