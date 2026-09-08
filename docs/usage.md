@@ -10,6 +10,11 @@ assumpgo -version
 
 `<path>...` is one or more `.go` files or directories (walked recursively).
 
+`-output` writes the report to a file instead of stdout. A path that was
+collected as an analysis target is refused with exit `100` and left untouched —
+`assumpgo -output victim.go victim.go` reports an error rather than replacing
+your source with the report.
+
 
 Example:
 

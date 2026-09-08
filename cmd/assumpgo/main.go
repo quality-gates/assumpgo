@@ -84,6 +84,15 @@ func run(args []string, stdout, stderr *os.File) int {
 
 	sink := stdout
 	if *output != "" {
+		// os.Create truncates, so refuse to write the report over a file that
+		// was collected as an analysis target — the user's source would be
+		// gone. The check happens before Create: once it truncates, the
+		// source is unrecoverable.
+		if assumpgo.ContainsPath(targets, *output) {
+			fmt.Fprintf(stderr, "error: refusing to overwrite analysed source file: %s\n", *output)
+			return exitUsage
+		}
+
 		f, err := os.Create(*output)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)

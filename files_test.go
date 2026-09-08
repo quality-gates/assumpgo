@@ -304,3 +304,34 @@ func TestCollectTargetsPropagatesError(t *testing.T) {
 		t.Error("expected error when second target does not exist")
 	}
 }
+
+func TestContainsPathMatchesPathSpellings(t *testing.T) {
+	dog := filepath.Join("testdata", "fixtures", "dog.go")
+	absDog, err := filepath.Abs(dog)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name  string
+		paths []string
+		path  string
+		want  bool
+	}{
+		{name: "exact match", paths: []string{dog}, path: dog, want: true},
+		{name: "dot-slash spelling", paths: []string{dog}, path: filepath.Join(".", "testdata", "fixtures", "dog.go"), want: true},
+		{name: "redundant separators", paths: []string{dog}, path: filepath.Join("testdata", "", "fixtures", "dog.go"), want: true},
+		{name: "relative paths, absolute query", paths: []string{dog}, path: absDog, want: true},
+		{name: "absolute paths, relative query", paths: []string{absDog}, path: dog, want: true},
+		{name: "other file", paths: []string{dog}, path: filepath.Join("testdata", "fixtures", "cat.go"), want: false},
+		{name: "empty paths", paths: nil, path: dog, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ContainsPath(tt.paths, tt.path); got != tt.want {
+				t.Errorf("ContainsPath(%v, %q) = %v, want %v", tt.paths, tt.path, got, tt.want)
+			}
+		})
+	}
+}

@@ -271,6 +271,109 @@ func TestExcludePathSyntaxVariations(t *testing.T) {
 	}
 }
 
+// writeSource writes a small Go file containing an assumption and returns its
+// original contents for later comparison.
+func writeSource(t *testing.T, path string) []byte {
+	t.Helper()
+	src := []byte("package p\n\nfunc F(x *int) {\n\tif x != nil {\n\t}\n}\n")
+	if err := os.WriteFile(path, src, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return src
+}
+
+// TestOutputRefusesToOverwriteAnalysedFile locks in the issue #36 fix: an
+// -output path that was collected as an analysis target must be refused with a
+// usage error, and the source file must be left byte-for-byte intact.
+func TestOutputRefusesToOverwriteAnalysedFile(t *testing.T) {
+	tests := []struct {
+		name   string
+		target string
+		output string // relative to dir, spelled as the CLI user would
+		short  bool   // use the -o shorthand instead of -output
+	}{
+		{name: "same file", target: "victim.go", output: "victim.go"},
+		{name: "same file, dot-slash output", target: "victim.go", output: "." + string(filepath.Separator) + "victim.go"},
+		{name: "same file, absolute output", target: "victim.go", output: ""},
+		{name: "same file, shorthand flag", target: "victim.go", output: "victim.go", short: true},
+		{name: "file inside scanned directory", target: ".", output: filepath.Join("pkg", "report.go")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Chdir(dir)
+			victim := filepath.Join(dir, "victim.go")
+			src := writeSource(t, victim)
+
+			// The directory case needs a second Go file so the output path is
+			// a distinct collected target, not the target argument itself.
+			if tt.name == "file inside scanned directory" {
+				if err := os.Mkdir(filepath.Join(dir, "pkg"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				writeSource(t, filepath.Join(dir, "pkg", "report.go"))
+			}
+
+			output := tt.output
+			if tt.name == "same file, absolute output" {
+				output = victim
+			}
+
+			flag := "-output"
+			if tt.short {
+				flag = "-o"
+			}
+
+			_, stderr, code := runCapture(t, flag, output, tt.target)
+
+			if code != exitUsage {
+				t.Fatalf("exit = %d, want %d", code, exitUsage)
+			}
+			if !strings.Contains(stderr, "refusing to overwrite analysed source file: "+output) {
+				t.Errorf("stderr should name the refused path:\n%s", stderr)
+			}
+
+			got, err := os.ReadFile(victim)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != string(src) {
+				t.Errorf("analysed source was overwritten:\n%s", got)
+			}
+		})
+	}
+}
+
+// TestOutputToNonTargetPathStillWorks pins the positive control: writing to a
+// path that was not analysed must keep working.
+func TestOutputToNonTargetPathStillWorks(t *testing.T) {
+	dir := t.TempDir()
+	victim := filepath.Join(dir, "victim.go")
+	src := writeSource(t, victim)
+	report := filepath.Join(dir, "report.xml")
+
+	_, stderr, code := runCapture(t, "-format", "xml", "-output", report, victim)
+
+	if code != exitAssumption {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, exitAssumption, stderr)
+	}
+	data, err := os.ReadFile(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(string(data)), "<?xml") {
+		t.Errorf("report.xml should contain the XML report:\n%s", data)
+	}
+	got, err := os.ReadFile(victim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(src) {
+		t.Errorf("analysed source was overwritten:\n%s", got)
+	}
+}
+
 func TestExcludeNonexistentPath(t *testing.T) {
 	stdout, stderr, code := runCapture(t, "-exclude", "vendor,generated", fixture("dog.go"))
 	if code != exitAssumption {
