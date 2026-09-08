@@ -101,6 +101,12 @@ func TestAnalyserHonoursExcludes(t *testing.T) {
 }
 
 func TestAnalyserHonoursExcludesPathSyntax(t *testing.T) {
+	rel := filepath.Join("testdata", "fixtures", "dog.go")
+	abs, err := filepath.Abs(rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	tests := []struct {
 		name    string
 		exclude string
@@ -131,6 +137,16 @@ func TestAnalyserHonoursExcludesPathSyntax(t *testing.T) {
 			exclude: "testdata/fixtures/../fixtures/dog.go",
 			target:  "testdata/fixtures/dog.go",
 		},
+		{
+			name:    "exclude relative, target absolute",
+			exclude: rel,
+			target:  abs,
+		},
+		{
+			name:    "exclude absolute, target relative",
+			exclude: abs,
+			target:  rel,
+		},
 	}
 
 	for _, tt := range tests {
@@ -144,6 +160,24 @@ func TestAnalyserHonoursExcludesPathSyntax(t *testing.T) {
 				t.Errorf("file %q was not excluded by %q (got %d assumptions, want 0)", tt.target, tt.exclude, got)
 			}
 		})
+	}
+}
+
+func TestAnalyserExcludeDifferentFileAbsoluteDoesNotExclude(t *testing.T) {
+	dog := filepath.Join("testdata", "fixtures", "dog.go")
+	cat := filepath.Join("testdata", "fixtures", "cat.go")
+	absCat, err := filepath.Abs(cat)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), []string{absCat})
+	result, err := analyser.Analyse([]string{dog})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+	if got := result.AssumptionsCount(); got != 1 {
+		t.Errorf("dog.go was excluded by absolute cat.go (got %d assumptions, want 1)", got)
 	}
 }
 
