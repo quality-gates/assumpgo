@@ -140,6 +140,51 @@ func TestMultipleTargetDirectories(t *testing.T) {
 	}
 }
 
+func TestRecursivePatternTarget(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	nested := filepath.Join(root, "nested")
+	if err := os.Mkdir(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	rootSource := []byte("package root\n\nfunc check(value any) bool {\n\tif value != nil {\n\t\treturn true\n\t}\n\treturn false\n}\n")
+	if err := os.WriteFile(filepath.Join(root, "root.go"), rootSource, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	nestedSource := []byte("package nested\n\nfunc check(value any) bool {\n\tif value != nil {\n\t\treturn true\n\t}\n\treturn false\n}\n")
+	if err := os.WriteFile(filepath.Join(nested, "nested.go"), nestedSource, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	patterns := []struct {
+		name string
+		path string
+	}{
+		{name: "dot slash", path: "." + string(filepath.Separator) + "..."},
+		{name: "bare", path: "..."},
+	}
+	for _, pattern := range patterns {
+		t.Run(pattern.name, func(t *testing.T) {
+			stdout, stderr, code := runCapture(t, pattern.path)
+			if code != exitAssumption {
+				t.Fatalf("exit = %d, want %d (stderr: %s, stdout: %s)", code, exitAssumption, stderr, stdout)
+			}
+			if stderr != "" {
+				t.Errorf("unexpected stderr: %s", stderr)
+			}
+			if !strings.Contains(stdout, "root.go") || !strings.Contains(stdout, "nested.go") {
+				t.Errorf("expected recursive target files in output, got:\n%s", stdout)
+			}
+			if !strings.Contains(stdout, "2 out of 2 boolean expressions are assumptions (100%)") {
+				t.Errorf("unexpected summary line:\n%s", stdout)
+			}
+		})
+	}
+}
+
 func TestMultipleTargetsDeduplicated(t *testing.T) {
 	stdout, _, code := runCapture(t, fixture("dog.go"), fixture("dog.go"))
 	if code != exitAssumption {
