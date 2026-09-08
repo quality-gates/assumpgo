@@ -1,6 +1,7 @@
 package assumpgo
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -43,6 +44,7 @@ func CollectGoFiles(fromPath string) ([]string, error) {
 
 // CollectFromList expands a comma separated list of files/directories into a
 // deduplicated list of cleaned .go files. Used for the --exclude flag.
+// Non-existent paths are ignored.
 func CollectFromList(list string) ([]string, error) {
 	var paths []string
 	seen := make(map[string]bool)
@@ -53,6 +55,9 @@ func CollectFromList(list string) ([]string, error) {
 		}
 		found, err := CollectGoFiles(item)
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
 			return nil, err
 		}
 		for _, p := range found {

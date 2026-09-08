@@ -114,9 +114,48 @@ func TestCollectFromList(t *testing.T) {
 	}
 }
 
+func TestCollectFromListIgnoresNonexistent(t *testing.T) {
+	cat := filepath.Join("testdata", "fixtures", "cat.go")
+	dog := filepath.Join("testdata", "fixtures", "dog.go")
+
+	got, err := CollectFromList("vendor,generated")
+	if err != nil {
+		t.Fatalf("CollectFromList with nonexistent paths returned error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("CollectFromList with nonexistent paths = %v, want empty", got)
+	}
+
+	got, err = CollectFromList("nonexistent_before.go , " + cat + " , missing_middle , " + dog + " , nonexistent_after.go")
+	if err != nil {
+		t.Fatalf("CollectFromList with mixed paths returned error: %v", err)
+	}
+	if len(got) != 2 || got[0] != cat || got[1] != dog {
+		t.Errorf("CollectFromList = %v, want [%q %q]", got, cat, dog)
+	}
+}
+
 func TestCollectFromListPropagatesError(t *testing.T) {
-	if _, err := CollectFromList("does-not-exist.go"); err == nil {
-		t.Error("expected an error for a missing entry in the list")
+	if os.Geteuid() == 0 {
+		t.Skip("skipping permission test when running as root")
+	}
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "restricted")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "file.go"), []byte("package sub\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sub, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(sub, 0o755)
+	})
+
+	if _, err := CollectFromList(dir); err == nil {
+		t.Error("expected an error when traversing unreadable directory")
 	}
 }
 

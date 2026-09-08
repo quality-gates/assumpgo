@@ -204,3 +204,13 @@ func TestExcludePathSyntaxVariations(t *testing.T) {
 		})
 	}
 }
+
+func TestExcludeNonexistentPath(t *testing.T) {
+	stdout, stderr, code := runCapture(t, "-exclude", "vendor,generated", fixture("dog.go"))
+	if code != exitAssumption {
+		t.Fatalf("exit = %d, want %d (stderr: %s, stdout: %s)", code, exitAssumption, stderr, stdout)
+	}
+	if !strings.Contains(stdout, "dog.go") {
+		t.Errorf("expected dog.go in output, got:\n%s", stdout)
+	}
+}
