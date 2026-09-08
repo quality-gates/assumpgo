@@ -153,7 +153,7 @@ when cutting a release.
   against `testdata/fixtures/example.go`. These hardcoded expectations are the
   point — the fixture is a fixed input. **If you edit a fixture, update the
   expected line numbers and counts in the test**, or the assertions (and the
-  documented calibration: 4 assumptions / 7 boolean expressions / 57%) will
+  documented calibration: 4 assumptions / 9 boolean expressions / 44%) will
   drift.
 - `output_test.go` does not hardcode exact column widths; it asserts that all
   table lines share a width (alignment) plus the exact summary line. Follow that

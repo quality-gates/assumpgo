@@ -49,6 +49,11 @@ func (d *Detector) Scan(node ast.Node) bool {
 // count (the denominator of the assumption percentage). Mirrors the PHP set of
 // If / ElseIf / While / For / Ternary / && / || nodes. Go has no ternary and
 // folds while/else-if into for/if.
+//
+// The denominator must cover every node Scan can flag (`!=` and `!var` too) so
+// the numerator is always a subset of the denominator and the percentage stays
+// within 0–100 (issue #34). A negative comparison or boolean-not outside an
+// if/for/&&/|| context is still a boolean expression in its own right.
 func (d *Detector) IsBoolExpression(node ast.Node) bool {
 	switch n := node.(type) {
 	case *ast.IfStmt:
@@ -57,7 +62,9 @@ func (d *Detector) IsBoolExpression(node ast.Node) bool {
 		// A bare `for {}` has no condition and is not a boolean expression.
 		return n.Cond != nil
 	case *ast.BinaryExpr:
-		return n.Op == token.LAND || n.Op == token.LOR
+		return n.Op == token.LAND || n.Op == token.LOR || n.Op == token.NEQ
+	case *ast.UnaryExpr:
+		return n.Op == token.NOT && isVarIdent(n.X)
 	}
 
 	return false
