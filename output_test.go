@@ -161,3 +161,132 @@ func TestXMLOutputEmpty(t *testing.T) {
 		t.Errorf("expected no <file> elements for an empty result:\n%s", out)
 	}
 }
+
+func TestPrettyOutputMultibyteAlignment(t *testing.T) {
+	r := resultWith(
+		Assumption{File: "main.go", Line: 4, Message: "if dog != nil { // café ☕"},
+		Assumption{File: "path/to/日本語.go", Line: 12, Message: "if cat != nil {"},
+		Assumption{File: "short.go", Line: 99, Message: "if fish != nil { // pure ascii message longer"},
+	)
+
+	var buf bytes.Buffer
+	if err := (PrettyOutput{}).Output(&buf, r); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	var tableLines []string
+	for _, l := range lines {
+		if l == "" {
+			break
+		}
+		tableLines = append(tableLines, l)
+	}
+	if len(tableLines) != 7 {
+		// 1 border + header + 1 separator + 3 rows + 1 border
+		t.Fatalf("expected 7 table lines, got %d:\n%s", len(tableLines), out)
+	}
+
+	wantWidth := stringWidth(tableLines[0])
+	for i, l := range tableLines {
+		if got := stringWidth(l); got != wantWidth {
+			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, l)
+		}
+	}
+
+	// Verify column dividers align across all rows
+	for i, l := range tableLines {
+		if strings.HasPrefix(l, "-") || strings.HasPrefix(l, "=") {
+			continue
+		}
+		// Count positions of | in visual columns
+		col := 0
+		var pipePositions []int
+		for _, r := range l {
+			if r == '|' {
+				pipePositions = append(pipePositions, col)
+			}
+			col += runeWidth(r)
+		}
+		if len(pipePositions) != 4 {
+			t.Errorf("line %d has %d pipes, want 4:\n%s", i, len(pipePositions), l)
+		}
+	}
+}
+
+func TestRuneWidth(t *testing.T) {
+	tests := []struct {
+		r    rune
+		want int
+	}{
+		// Control and non-printable characters
+		{0, 0},
+		{31, 0},
+		{0x7f, 0},
+		{0x80, 0},
+		{0x9f, 0},
+
+		// Printable ASCII
+		{32, 1},
+		{'a', 1},
+		{'~', 1},
+
+		// Latin-1 Supplement (accented characters are 1 column)
+		{0xa0, 1},
+		{'é', 1},
+		{'ü', 1},
+
+		// Hangul Jamo boundaries
+		{0x10ff, 1},
+		{0x1100, 2},
+		{0x11ff, 2},
+		{0x1200, 1},
+
+		// Misc Symbols and Dingbats boundaries (including ☕ = 0x2615)
+		{0x25ff, 1},
+		{0x2600, 2},
+		{0x2615, 2},
+		{0x27bf, 2},
+		{0x27c0, 1},
+
+		// CJK / Fullwidth boundaries
+		{0x2e7f, 1},
+		{0x2e80, 2},
+		{'日', 2},
+		{0xffef, 2},
+		{0xfff0, 1},
+
+		// Emojis (SMP >= 0x1f000)
+		{0x1efff, 1},
+		{0x1f000, 2},
+		{'🚀', 2},
+	}
+
+	for _, tt := range tests {
+		if got := runeWidth(tt.r); got != tt.want {
+			t.Errorf("runeWidth(%#x / %q) = %d, want %d", tt.r, tt.r, got, tt.want)
+		}
+	}
+}
+
+func TestStringWidth(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int
+	}{
+		{"", 0},
+		{"hello", 5},
+		{"café", 4},
+		{"café ☕", 7}, // 4 (café) + 1 (space) + 2 (☕)
+		{"日本語", 6},
+		{"🚀 rocket", 9}, // 2 (🚀) + 1 (space) + 6 (rocket)
+		{"\x00abc", 3},  // null byte is width 0
+	}
+
+	for _, tt := range tests {
+		if got := stringWidth(tt.input); got != tt.want {
+			t.Errorf("stringWidth(%q) = %d, want %d", tt.input, got, tt.want)
+		}
+	}
+}

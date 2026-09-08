@@ -47,12 +47,12 @@ func writeTable(w io.Writer, assumptions []Assumption) error {
 
 	widths := make([]int, len(headers))
 	for i, h := range headers {
-		widths[i] = len(h)
+		widths[i] = stringWidth(h)
 	}
 	for _, row := range rows {
 		for i, cell := range row {
-			if len(cell) > widths[i] {
-				widths[i] = len(cell)
+			if w := stringWidth(cell); w > widths[i] {
+				widths[i] = w
 			}
 		}
 	}
@@ -73,7 +73,11 @@ func writeTable(w io.Writer, assumptions []Assumption) error {
 		var b strings.Builder
 		b.WriteString("|")
 		for i, cell := range cells {
-			fmt.Fprintf(&b, " %-*s |", widths[i], cell)
+			pad := widths[i] - stringWidth(cell)
+			b.WriteString(" ")
+			b.WriteString(cell)
+			b.WriteString(strings.Repeat(" ", pad))
+			b.WriteString(" |")
 		}
 		_, err := fmt.Fprintln(w, b.String())
 		return err
@@ -96,6 +100,30 @@ func writeTable(w io.Writer, assumptions []Assumption) error {
 	_, err := fmt.Fprintln(w, border('-'))
 
 	return err
+}
+
+func runeWidth(r rune) int {
+	if r < 32 || (r >= 0x7f && r < 0xa0) {
+		return 0
+	}
+	if (r >= 0x1100 && r <= 0x11ff) ||
+		(r >= 0x2600 && r <= 0x27bf) ||
+		(r >= 0x2e80 && r <= 0xffef) ||
+		r >= 0x1f000 {
+		return 2
+	}
+	return 1
+}
+
+// stringWidth calculates the monospace visual display width of a string.
+// Printable ASCII characters have width 1. Control and non-printable characters have width 0.
+// East Asian Wide / Fullwidth characters and common emojis have width 2.
+func stringWidth(s string) int {
+	w := 0
+	for _, r := range s {
+		w += runeWidth(r)
+	}
+	return w
 }
 
 // XMLOutput renders a checkstyle-style XML report, mirroring php-assumptions'
