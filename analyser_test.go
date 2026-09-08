@@ -339,3 +339,34 @@ func Guard() {
 		t.Fatalf("AssumptionsCount() = %d, want 1", got)
 	}
 }
+
+func TestAnalyserDetectsBareVariableWithUnrelatedInitInIfAndFor(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "main.go")
+	code := `package main
+
+func doSomething() {}
+
+func Check(running bool) {
+	for i := 0; running; i++ {
+	}
+	if doSomething(); running {
+	}
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+
+	if got := result.BoolExpressionsCount(); got != 2 {
+		t.Errorf("BoolExpressionsCount() = %d, want 2", got)
+	}
+	if got := result.AssumptionsCount(); got != 2 {
+		t.Errorf("AssumptionsCount() = %d, want 2; assumptions: %#v", got, result.Assumptions())
+	}
+}
