@@ -58,3 +58,25 @@ func CollectFromList(list string) ([]string, error) {
 
 	return paths, nil
 }
+
+// CollectTargets expands a slice of target paths into a deduplicated list
+// of .go files.
+func CollectTargets(targets []string) ([]string, error) {
+	var paths []string
+	seen := make(map[string]bool)
+	for _, target := range targets {
+		found, err := CollectGoFiles(target)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range found {
+			clean := filepath.Clean(p)
+			if !seen[clean] {
+				seen[clean] = true
+				paths = append(paths, clean)
+			}
+		}
+	}
+
+	return paths, nil
+}

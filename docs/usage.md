@@ -1,14 +1,15 @@
 # Usage
 
 ```console
-assumpgo <path>
-assumpgo -format xml <path>
-assumpgo -exclude a.go,vendor <path>
-assumpgo -output report.xml -format xml <path>
+assumpgo <path>...
+assumpgo -format xml <path>...
+assumpgo -exclude a.go,vendor <path>...
+assumpgo -output report.xml -format xml <path>...
 assumpgo -version
 ```
 
-`<path>` is a single `.go` file or a directory (walked recursively).
+`<path>...` is one or more `.go` files or directories (walked recursively).
+
 
 Example:
 
