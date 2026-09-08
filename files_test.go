@@ -120,6 +120,44 @@ func TestCollectFromListPropagatesError(t *testing.T) {
 	}
 }
 
+func TestCollectGoFilesCleansPaths(t *testing.T) {
+	file := filepath.Join(".", "testdata", "fixtures", "dog.go")
+	got, err := CollectGoFiles(file)
+	if err != nil {
+		t.Fatalf("CollectGoFiles(%q): %v", file, err)
+	}
+	want := filepath.Join("testdata", "fixtures", "dog.go")
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("CollectGoFiles(%q) = %v, want [%q]", file, got, want)
+	}
+
+	dir := filepath.Join(".", "testdata", "fixtures")
+	gotDir, err := CollectGoFiles(dir)
+	if err != nil {
+		t.Fatalf("CollectGoFiles(%q): %v", dir, err)
+	}
+	for _, p := range gotDir {
+		if strings.HasPrefix(p, "."+string(filepath.Separator)) {
+			t.Errorf("CollectGoFiles(%q) returned uncleaned path %q", dir, p)
+		}
+	}
+}
+
+func TestCollectFromListCleansAndDeduplicates(t *testing.T) {
+	in := filepath.Join(".", "testdata", "fixtures", "dog.go") + " , " +
+		filepath.Join("testdata", "", "fixtures", "dog.go") + " , " +
+		filepath.Join("testdata", "fixtures", "cat.go")
+	got, err := CollectFromList(in)
+	if err != nil {
+		t.Fatalf("CollectFromList(%q): %v", in, err)
+	}
+	wantDog := filepath.Join("testdata", "fixtures", "dog.go")
+	wantCat := filepath.Join("testdata", "fixtures", "cat.go")
+	if len(got) != 2 || got[0] != wantDog || got[1] != wantCat {
+		t.Errorf("CollectFromList(%q) = %v, want [%q %q]", in, got, wantDog, wantCat)
+	}
+}
+
 func TestCollectTargetsEmpty(t *testing.T) {
 	for _, in := range [][]string{nil, {}} {
 		got, err := CollectTargets(in)

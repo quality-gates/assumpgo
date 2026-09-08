@@ -96,6 +96,53 @@ func TestAnalyserHonoursExcludes(t *testing.T) {
 	}
 }
 
+func TestAnalyserHonoursExcludesPathSyntax(t *testing.T) {
+	tests := []struct {
+		name    string
+		exclude string
+		target  string
+	}{
+		{
+			name:    "exclude with leading dot-slash",
+			exclude: "./testdata/fixtures/dog.go",
+			target:  "testdata/fixtures/dog.go",
+		},
+		{
+			name:    "target with leading dot-slash",
+			exclude: "testdata/fixtures/dog.go",
+			target:  "./testdata/fixtures/dog.go",
+		},
+		{
+			name:    "exclude with redundant separators",
+			exclude: "testdata//fixtures/dog.go",
+			target:  "testdata/fixtures/dog.go",
+		},
+		{
+			name:    "target with redundant separators",
+			exclude: "testdata/fixtures/dog.go",
+			target:  "testdata//fixtures/dog.go",
+		},
+		{
+			name:    "exclude with relative dot segment",
+			exclude: "testdata/fixtures/../fixtures/dog.go",
+			target:  "testdata/fixtures/dog.go",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			analyser := NewAnalyser(NewDetector(), []string{tt.exclude})
+			result, err := analyser.Analyse([]string{tt.target})
+			if err != nil {
+				t.Fatalf("analyse: %v", err)
+			}
+			if got := result.AssumptionsCount(); got != 0 {
+				t.Errorf("file %q was not excluded by %q (got %d assumptions, want 0)", tt.target, tt.exclude, got)
+			}
+		})
+	}
+}
+
 func TestPercentageZeroWhenNoBoolExpressions(t *testing.T) {
 	r := &Result{}
 	if got := r.Percentage(); got != 0 {
