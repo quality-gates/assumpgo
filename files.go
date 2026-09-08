@@ -9,15 +9,22 @@ import (
 )
 
 // CollectGoFiles returns the list of .go files reachable from fromPath,
-// cleaned using filepath.Clean. If fromPath is a single file it is returned;
-// if it is a directory it is walked recursively.
+// cleaned using filepath.Clean. A trailing ... path component is treated as a
+// recursive pattern rooted at its containing directory. If fromPath is a
+// single file it is returned; if it is a directory it is walked recursively.
 func CollectGoFiles(fromPath string) ([]string, error) {
-	info, err := os.Stat(fromPath)
+	pathToCollect := fromPath
+	cleanPattern := filepath.Clean(fromPath)
+	if filepath.Base(cleanPattern) == "..." {
+		pathToCollect = filepath.Dir(cleanPattern)
+	}
+
+	info, err := os.Stat(pathToCollect)
 	if err != nil {
 		return nil, err
 	}
 
-	cleanPath := filepath.Clean(fromPath)
+	cleanPath := filepath.Clean(pathToCollect)
 	if !info.IsDir() {
 		return []string{cleanPath}, nil
 	}
