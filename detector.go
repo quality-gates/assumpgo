@@ -126,3 +126,64 @@ func unwrap(node ast.Node) ast.Node {
 		node = paren.X
 	}
 }
+
+// invertedCommaOkCond returns the unary NOT expression when cond is an
+// inverted comma-ok check for a variable bound in init. It returns nil
+// otherwise.
+func (d *Detector) invertedCommaOkCond(init ast.Stmt, cond ast.Expr) ast.Expr {
+	okName := commaOkVarName(init)
+	if okName == "" || cond == nil {
+		return nil
+	}
+
+	unary, ok := unwrap(cond).(*ast.UnaryExpr)
+	if !ok || unary.Op != token.NOT {
+		return nil
+	}
+
+	ident, ok := unwrap(unary.X).(*ast.Ident)
+	if !ok || ident.Name != okName {
+		return nil
+	}
+
+	return unary
+}
+
+// commaOkVarName returns the name of the ok variable bound by a comma-ok
+// assignment in init. It returns an empty string when init is not a comma-ok
+// assignment.
+func commaOkVarName(init ast.Stmt) string {
+	assign, ok := init.(*ast.AssignStmt)
+	if !ok {
+		return ""
+	}
+
+	if assign.Tok != token.DEFINE && assign.Tok != token.ASSIGN {
+		return ""
+	}
+
+	if len(assign.Lhs) != 2 || len(assign.Rhs) != 1 {
+		return ""
+	}
+
+	okIdent, ok := unwrap(assign.Lhs[1]).(*ast.Ident)
+	if !ok || okIdent.Name == "_" {
+		return ""
+	}
+
+	if !isCommaOkExpr(assign.Rhs[0]) {
+		return ""
+	}
+
+	return okIdent.Name
+}
+
+// isCommaOkExpr reports whether expr is a comma-ok expression: a type
+// assertion or a map index expression.
+func isCommaOkExpr(expr ast.Expr) bool {
+	switch unwrap(expr).(type) {
+	case *ast.TypeAssertExpr, *ast.IndexExpr:
+		return true
+	}
+	return false
+}

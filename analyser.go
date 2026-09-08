@@ -103,7 +103,26 @@ func (a *Analyser) analyseFile(path string, result *Result) error {
 
 	lines := strings.Split(string(src), "\n")
 
+	ignored := make(map[ast.Node]struct{})
+
 	ast.Inspect(f, func(node ast.Node) bool {
+		switch n := node.(type) {
+		case *ast.IfStmt:
+			if cond := a.detector.invertedCommaOkCond(n.Init, n.Cond); cond != nil {
+				ignored[cond] = struct{}{}
+				ignored[n.Cond] = struct{}{}
+			}
+		case *ast.ForStmt:
+			if cond := a.detector.invertedCommaOkCond(n.Init, n.Cond); cond != nil {
+				ignored[cond] = struct{}{}
+				ignored[n.Cond] = struct{}{}
+			}
+		}
+
+		if _, skip := ignored[node]; skip {
+			return true
+		}
+
 		if a.detector.IsBoolExpression(node) {
 			result.increaseBoolExpressionsCount()
 		}
