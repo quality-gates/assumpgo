@@ -294,7 +294,21 @@ func TestIsBoolExpression(t *testing.T) {
 	if !d.IsBoolExpression(parseExpr(t, "x || y")) {
 		t.Error("expected || to be a boolean expression")
 	}
-	if d.IsBoolExpression(parseExpr(t, "x != y")) {
-		t.Error("expected != not to count as a boolean expression for the denominator")
+
+	// Every node Scan can flag must also count as a boolean expression, or the
+	// percentage denominator misses it (issue #34).
+	if !d.IsBoolExpression(parseExpr(t, "x != y")) {
+		t.Error("expected != to be a boolean expression (it is always an assumption)")
+	}
+	if !d.IsBoolExpression(parseExpr(t, "!x")) {
+		t.Error("expected !x to be a boolean expression (it is always an assumption)")
+	}
+
+	// Near-misses: assertions and non-variable boolean-nots are neither
+	// assumptions nor boolean expressions.
+	for _, src := range []string{"x == y", "x == nil", "!helper(x)", "!true", "-x", "<-ch"} {
+		if d.IsBoolExpression(parseExpr(t, src)) {
+			t.Errorf("expected %q not to count as a boolean expression", src)
+		}
 	}
 }

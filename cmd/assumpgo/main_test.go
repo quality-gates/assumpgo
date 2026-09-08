@@ -111,7 +111,9 @@ func TestMultipleTargetFiles(t *testing.T) {
 	if !strings.Contains(stdout, "dog.go") {
 		t.Errorf("expected dog.go in output, got:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "1 out of 2 boolean expressions are assumptions (50%)") {
+	// cat.go contributes the comma-ok `if` (1 boolean expression), dog.go its
+	// `if` plus the `!=` comparison (2), for 1 assumption in 3 expressions.
+	if !strings.Contains(stdout, "1 out of 3 boolean expressions are assumptions (33%)") {
 		t.Errorf("unexpected summary line:\n%s", stdout)
 	}
 }
@@ -135,7 +137,9 @@ func TestMultipleTargetDirectories(t *testing.T) {
 	if !strings.Contains(stdout, "a.go") || !strings.Contains(stdout, "b.go") {
 		t.Errorf("expected both a.go and b.go in output, got:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "2 out of 2 boolean expressions are assumptions (100%)") {
+	// Each file has `if x != nil` = 2 boolean expressions (the `if` and the
+	// `!=`), so 2 assumptions out of 4.
+	if !strings.Contains(stdout, "2 out of 4 boolean expressions are assumptions (50%)") {
 		t.Errorf("unexpected summary line:\n%s", stdout)
 	}
 }
@@ -178,7 +182,7 @@ func TestRecursivePatternTarget(t *testing.T) {
 			if !strings.Contains(stdout, "root.go") || !strings.Contains(stdout, "nested.go") {
 				t.Errorf("expected recursive target files in output, got:\n%s", stdout)
 			}
-			if !strings.Contains(stdout, "2 out of 2 boolean expressions are assumptions (100%)") {
+			if !strings.Contains(stdout, "2 out of 4 boolean expressions are assumptions (50%)") {
 				t.Errorf("unexpected summary line:\n%s", stdout)
 			}
 		})
@@ -190,8 +194,9 @@ func TestMultipleTargetsDeduplicated(t *testing.T) {
 	if code != exitAssumption {
 		t.Fatalf("exit = %d, want %d", code, exitAssumption)
 	}
-	// dog.go has 1 assumption. If analyzed twice, count would be 2.
-	if !strings.Contains(stdout, "1 out of 1 boolean expressions are assumptions (100%)") {
+	// dog.go has 1 assumption in 2 boolean expressions (the `if` and the `!=`).
+	// If analyzed twice, the assumption count would be 2.
+	if !strings.Contains(stdout, "1 out of 2 boolean expressions are assumptions (50%)") {
 		t.Errorf("expected deduplicated summary of 1 expression, got:\n%s", stdout)
 	}
 }

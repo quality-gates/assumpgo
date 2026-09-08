@@ -37,14 +37,17 @@ func TestAnalyserDetectsAssumptions(t *testing.T) {
 func TestAnalyserCountsBoolExpressions(t *testing.T) {
 	result := analyseExample(t)
 
-	if got := result.BoolExpressionsCount(); got != 7 {
-		t.Errorf("BoolExpressionsCount() = %d, want 7", got)
+	// 5 statement/logic contexts (2 if + else-if, 2 for, 1 &&) plus the 2
+	// assumption nodes Scan flags outside those contexts (!test, i != 0)
+	// which must also count toward the denominator (issue #34).
+	if got := result.BoolExpressionsCount(); got != 9 {
+		t.Errorf("BoolExpressionsCount() = %d, want 9", got)
 	}
 	if got := result.AssumptionsCount(); got != 4 {
 		t.Errorf("AssumptionsCount() = %d, want 4", got)
 	}
-	if got := result.Percentage(); got != 57 {
-		t.Errorf("Percentage() = %d, want 57", got)
+	if got := result.Percentage(); got != 44 {
+		t.Errorf("Percentage() = %d, want 44", got)
 	}
 }
 
@@ -62,11 +65,12 @@ func TestAnalyserDetectsNilCheck(t *testing.T) {
 	if msg := result.Assumptions()[0].Message; msg != "if dog != nil {" {
 		t.Errorf("message = %q, want %q", msg, "if dog != nil {")
 	}
-	if got := result.BoolExpressionsCount(); got != 1 {
-		t.Errorf("BoolExpressionsCount() = %d, want 1", got)
+	// The `if` and the `!=` comparison each count as a boolean expression.
+	if got := result.BoolExpressionsCount(); got != 2 {
+		t.Errorf("BoolExpressionsCount() = %d, want 2", got)
 	}
-	if got := result.Percentage(); got != 100 {
-		t.Errorf("Percentage() = %d, want 100", got)
+	if got := result.Percentage(); got != 50 {
+		t.Errorf("Percentage() = %d, want 50", got)
 	}
 }
 
@@ -154,6 +158,95 @@ func TestPercentageZeroWhenNoBoolExpressions(t *testing.T) {
 	r.addAssumption("a.go", 1, "x != nil")
 	if got := r.Percentage(); got != 0 {
 		t.Errorf("Percentage() with no bool expressions = %d, want 0", got)
+	}
+}
+
+// TestPercentageCoversAssumptionNodes is the regression test for issue #34:
+// `Scan` flags `!=` and `!var` anywhere in the tree, so those nodes must also
+// contribute to the boolean-expression denominator. Otherwise the ratio can be
+// 0% with findings present (a top-level `return x != nil`) or exceed 100%
+// (`return x != nil && y != nil` counts two assumptions against only the `&&`).
+func TestPercentageCoversAssumptionNodes(t *testing.T) {
+	tests := []struct {
+		name            string
+		code            string
+		wantAssumptions int
+		wantBoolExprs   int
+		wantPercentage  int
+	}{
+		{
+			name: "top-level not-equal is its own boolean expression",
+			code: `package main
+
+func F(x *int) bool {
+	return x != nil
+}
+`,
+			wantAssumptions: 1,
+			wantBoolExprs:   1,
+			wantPercentage:  100,
+		},
+		{
+			name: "and of two not-equals counts each side in the denominator",
+			code: `package main
+
+func F(x, y *int) bool {
+	return x != nil && y != nil
+}
+`,
+			wantAssumptions: 2,
+			wantBoolExprs:   3,
+			wantPercentage:  67,
+		},
+		{
+			name: "top-level boolean-not is its own boolean expression",
+			code: `package main
+
+func F(ready bool) bool {
+	return !ready
+}
+`,
+			wantAssumptions: 1,
+			wantBoolExprs:   1,
+			wantPercentage:  100,
+		},
+		{
+			name: "strict equality is neither assumption nor boolean expression",
+			code: `package main
+
+func F(x *int) bool {
+	return x == nil
+}
+`,
+			wantAssumptions: 0,
+			wantBoolExprs:   0,
+			wantPercentage:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "repro.go")
+			if err := os.WriteFile(src, []byte(tt.code), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			analyser := NewAnalyser(NewDetector(), nil)
+			result, err := analyser.Analyse([]string{src})
+			if err != nil {
+				t.Fatalf("analyse: %v", err)
+			}
+
+			if got := result.AssumptionsCount(); got != tt.wantAssumptions {
+				t.Errorf("AssumptionsCount() = %d, want %d; assumptions: %#v", got, tt.wantAssumptions, result.Assumptions())
+			}
+			if got := result.BoolExpressionsCount(); got != tt.wantBoolExprs {
+				t.Errorf("BoolExpressionsCount() = %d, want %d", got, tt.wantBoolExprs)
+			}
+			if got := result.Percentage(); got != tt.wantPercentage {
+				t.Errorf("Percentage() = %d, want %d", got, tt.wantPercentage)
+			}
+		})
 	}
 }
 

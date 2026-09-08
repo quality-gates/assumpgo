@@ -49,7 +49,10 @@ Chains of bare variables with no comparison anywhere — `x && y && z`,
 `x || y || z` — mix nothing and are **not** flagged.
 
 The **denominator** (boolean expressions) counts every `if`, every `for` with a
-condition, and every `&&` / `||`.
+condition, and every `&&` / `||`. Because `!=` and `!var` are flagged wherever
+they appear — not only inside those contexts — they count as boolean
+expressions too, keeping the percentage a real 0–100 ratio of boolean
+expressions that are assumptions.
 
 ## How this maps from PHP
 
