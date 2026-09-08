@@ -212,6 +212,12 @@ func TestMultipleTargetsErrorOnMissingPath(t *testing.T) {
 }
 
 func TestExcludePathSyntaxVariations(t *testing.T) {
+	rel := fixture("dog.go")
+	abs, err := filepath.Abs(rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	tests := []struct {
 		name    string
 		exclude string
@@ -236,6 +242,16 @@ func TestExcludePathSyntaxVariations(t *testing.T) {
 			name:    "target with redundant separators",
 			exclude: fixture("dog.go"),
 			target:  ".." + string(filepath.Separator) + ".." + string(filepath.Separator) + "testdata" + string(filepath.Separator) + string(filepath.Separator) + "fixtures" + string(filepath.Separator) + "dog.go",
+		},
+		{
+			name:    "exclude relative, target absolute",
+			exclude: rel,
+			target:  abs,
+		},
+		{
+			name:    "exclude absolute, target relative",
+			exclude: abs,
+			target:  rel,
 		},
 	}
 

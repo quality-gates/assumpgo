@@ -62,12 +62,20 @@ type Analyser struct {
 	excludes map[string]struct{}
 }
 
+func identityPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	return abs
+}
+
 // NewAnalyser returns an Analyser. Files whose paths appear in excludes are
 // skipped.
 func NewAnalyser(detector *Detector, excludes []string) *Analyser {
 	set := make(map[string]struct{}, len(excludes))
 	for _, e := range excludes {
-		set[filepath.Clean(e)] = struct{}{}
+		set[identityPath(e)] = struct{}{}
 	}
 
 	return &Analyser{detector: detector, excludes: set}
@@ -79,7 +87,7 @@ func (a *Analyser) Analyse(files []string) (*Result, error) {
 
 	for _, file := range files {
 		clean := filepath.Clean(file)
-		if _, excluded := a.excludes[clean]; excluded {
+		if _, excluded := a.excludes[identityPath(file)]; excluded {
 			continue
 		}
 
