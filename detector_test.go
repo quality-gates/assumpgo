@@ -165,6 +165,37 @@ func TestScanIgnoresTypeAssertion(t *testing.T) {
 	}
 }
 
+func TestScanIgnoresCommaOkChannelReceive(t *testing.T) {
+	d := NewDetector()
+
+	// Channel receive is the third comma-ok form: it binds `ok` the same way
+	// type assertions and map indexes do (issue #33), so `ok` / `!ok` in the
+	// condition is an assertion, not an assumption.
+	valid := []string{
+		"if v, ok := <-ch; ok {}",
+		"if v, ok := <-ch; !ok {}",
+		"if v, ok = <-ch; ok {}",
+		"if v, ok = <-ch; !ok {}",
+		"for v, ok := <-ch; ok; {}",
+		"if v, ok := (<-ch); ok {}",
+		"if v, (ok) := <-ch; (ok) {}",
+	}
+	for _, src := range valid {
+		if d.Scan(parseStmt(t, src)) {
+			t.Errorf("expected %q not to be an assumption", src)
+		}
+	}
+
+	// Near-miss: a unary expression that is not a channel receive does not
+	// bind `ok`, so the condition stays an assumption.
+	if !d.Scan(parseStmt(t, "if v, ok := -x; ok {}")) {
+		t.Error("expected `if v, ok := -x; ok` to be an assumption")
+	}
+	if !d.Scan(parseStmt(t, "if v, ok := <-ch; v {}")) {
+		t.Error("expected non-ok variable in channel comma-ok to be an assumption")
+	}
+}
+
 func TestInvertedCommaOkCond(t *testing.T) {
 	d := NewDetector()
 
@@ -172,6 +203,8 @@ func TestInvertedCommaOkCond(t *testing.T) {
 	valid := []string{
 		"if _, ok := v.(*Dog); !ok {}",
 		"if val, ok := m[k]; !ok {}",
+		"if v, ok := <-ch; !ok {}",
+		"if v, ok := (<-ch); !ok {}",
 		"if _, ok = v.(*Dog); !ok {}",
 		"if _, ok := v.(*Dog); (!ok) {}",
 		"if _, ok := (v.(*Dog)); !ok {}",

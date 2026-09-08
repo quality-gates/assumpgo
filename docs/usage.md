@@ -63,7 +63,9 @@ strict set of comparison operators, so:
 - Go's `!=` is the negative, blacklisting comparison the blog post warns about
   — it **is** flagged.
 
-The idiomatic comma-ok assertion (`if v, ok := x.(*T); ok` or inverted guard
-`if _, ok := x.(*T); !ok`) binds its variable in the `if` init statement and is
-therefore **not** treated as a bare-variable assumption.
+The idiomatic comma-ok assertion — type assertion (`if v, ok := x.(*T); ok`),
+map index (`if v, ok := m[k]; ok`), or channel receive (`if v, ok := <-ch; ok`),
+including their inverted guards (`!ok`) — binds its variable in the `if` or
+`for` init statement and is therefore **not** treated as a bare-variable
+assumption.
 

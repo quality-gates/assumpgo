@@ -210,11 +210,15 @@ func commaOkVarName(init ast.Stmt) string {
 }
 
 // isCommaOkExpr reports whether expr is a comma-ok expression: a type
-// assertion or a map index expression.
+// assertion, a map index expression, or a channel receive.
 func isCommaOkExpr(expr ast.Expr) bool {
-	switch unwrap(expr).(type) {
+	switch e := unwrap(expr).(type) {
 	case *ast.TypeAssertExpr, *ast.IndexExpr:
 		return true
+	case *ast.UnaryExpr:
+		// A channel receive `<-ch` used in a two-value assignment binds `ok`
+		// the same way a type assertion or map index does.
+		return e.Op == token.ARROW
 	}
 	return false
 }
