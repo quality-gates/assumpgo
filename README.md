@@ -45,7 +45,8 @@ go build -o assumpgo ./cmd/assumpgo
 ## Tune the gate
 
 Point at one or more packages or files. Exclude noisy paths with `-exclude`. Prefer
-checkstyle XML when a CI system needs a machine report:
+checkstyle XML when a CI system needs a machine report (`-format xml`; the only
+other accepted value is lowercase `pretty`, the default):
 
 
 ```console

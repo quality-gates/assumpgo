@@ -10,6 +10,11 @@ assumpgo -version
 
 `<path>...` is one or more `.go` files or directories (walked recursively).
 
+`-format` / `-f` accepts exactly `pretty` (the default human table) or `xml`
+(checkstyle). Values are case-sensitive and lowercase-only: `-format XML`,
+`-format json`, and `-format ""` are usage errors (exit `100`), not a silent
+fallback to pretty.
+
 `-output` writes the report to a file instead of stdout. A path that was
 collected as an analysis target is refused with exit `100` and left untouched —
 `assumpgo -output victim.go victim.go` reports an error rather than replacing
@@ -37,7 +42,7 @@ assumpgo analyser v0.1.1 by quality-gates
 | ---: | :--- |
 | 0 | No assumptions found |
 | 110 | One or more assumptions found |
-| 100 | Usage error (e.g. missing path) |
+| 100 | Usage error (e.g. missing path, unknown `-format`) |
 
 ## What counts as an assumption
 
