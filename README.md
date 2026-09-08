@@ -44,8 +44,9 @@ go build -o assumpgo ./cmd/assumpgo
 
 ## Tune the gate
 
-Point at a package or file. Exclude noisy paths with `-exclude`. Prefer
+Point at one or more packages or files. Exclude noisy paths with `-exclude`. Prefer
 checkstyle XML when a CI system needs a machine report:
+
 
 ```console
 assumpgo -format xml -exclude vendor,generated ./...

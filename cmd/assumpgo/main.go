@@ -57,7 +57,6 @@ func run(args []string, stdout, stderr *os.File) int {
 		fs.Usage()
 		return exitUsage
 	}
-	target := fs.Arg(0)
 
 	excludes, err := assumpgo.CollectFromList(*exclude)
 	if err != nil {
@@ -65,7 +64,7 @@ func run(args []string, stdout, stderr *os.File) int {
 		return exitUsage
 	}
 
-	targets, err := assumpgo.CollectGoFiles(target)
+	targets, err := assumpgo.CollectTargets(fs.Args())
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return exitUsage

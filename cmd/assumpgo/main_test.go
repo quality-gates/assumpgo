@@ -102,3 +102,61 @@ func TestMissingPathIsUsageError(t *testing.T) {
 		t.Errorf("stderr should report the missing path:\n%s", stderr)
 	}
 }
+
+func TestMultipleTargetFiles(t *testing.T) {
+	stdout, _, code := runCapture(t, fixture("cat.go"), fixture("dog.go"))
+	if code != exitAssumption {
+		t.Fatalf("exit = %d, want %d", code, exitAssumption)
+	}
+	if !strings.Contains(stdout, "dog.go") {
+		t.Errorf("expected dog.go in output, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "1 out of 2 boolean expressions are assumptions (50%)") {
+		t.Errorf("unexpected summary line:\n%s", stdout)
+	}
+}
+
+func TestMultipleTargetDirectories(t *testing.T) {
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
+	f1 := filepath.Join(dir1, "a.go")
+	f2 := filepath.Join(dir2, "b.go")
+	if err := os.WriteFile(f1, []byte("package a\nfunc check(x any) bool {\n\tif x != nil {\n\t\treturn true\n\t}\n\treturn false\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f2, []byte("package b\nfunc check(y any) bool {\n\tif y != nil {\n\t\treturn true\n\t}\n\treturn false\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, code := runCapture(t, dir1, dir2)
+	if code != exitAssumption {
+		t.Fatalf("exit = %d, want %d", code, exitAssumption)
+	}
+	if !strings.Contains(stdout, "a.go") || !strings.Contains(stdout, "b.go") {
+		t.Errorf("expected both a.go and b.go in output, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "2 out of 2 boolean expressions are assumptions (100%)") {
+		t.Errorf("unexpected summary line:\n%s", stdout)
+	}
+}
+
+func TestMultipleTargetsDeduplicated(t *testing.T) {
+	stdout, _, code := runCapture(t, fixture("dog.go"), fixture("dog.go"))
+	if code != exitAssumption {
+		t.Fatalf("exit = %d, want %d", code, exitAssumption)
+	}
+	// dog.go has 1 assumption. If analyzed twice, count would be 2.
+	if !strings.Contains(stdout, "1 out of 1 boolean expressions are assumptions (100%)") {
+		t.Errorf("expected deduplicated summary of 1 expression, got:\n%s", stdout)
+	}
+}
+
+func TestMultipleTargetsErrorOnMissingPath(t *testing.T) {
+	_, stderr, code := runCapture(t, fixture("dog.go"), "nonexistent-file.go")
+	if code != exitUsage {
+		t.Fatalf("exit = %d, want %d", code, exitUsage)
+	}
+	if !strings.Contains(stderr, "error:") {
+		t.Errorf("expected error message on stderr, got:\n%s", stderr)
+	}
+}
