@@ -173,3 +173,169 @@ func TestAnalyseExcludeContinues(t *testing.T) {
 		t.Errorf("AssumptionsCount() = %d, want 1 (dog.go must still be analysed)", got)
 	}
 }
+
+func TestAnalyserFindsNoAssumptionsInInvertedCommaOk(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "guard.go")
+	code := `package main
+
+type Dog struct{}
+
+func Check(cat any) {
+	if _, ok := cat.(*Dog); !ok {
+		return
+	}
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+
+	if got := result.AssumptionsCount(); got != 0 {
+		t.Errorf("AssumptionsCount() = %d, want 0; assumptions: %#v", got, result.Assumptions())
+	}
+	if got := result.BoolExpressionsCount(); got != 1 {
+		t.Errorf("BoolExpressionsCount() = %d, want 1", got)
+	}
+	if got := result.Percentage(); got != 0 {
+		t.Errorf("Percentage() = %d, want 0", got)
+	}
+}
+
+func TestAnalyserFindsNoAssumptionsInInvertedMapLookup(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "map.go")
+	code := `package main
+
+func Lookup(m map[string]int, k string) int {
+	if val, ok := m[k]; !ok {
+		return 0
+	} else {
+		return val
+	}
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+
+	if got := result.AssumptionsCount(); got != 0 {
+		t.Errorf("AssumptionsCount() = %d, want 0; assumptions: %#v", got, result.Assumptions())
+	}
+	if got := result.BoolExpressionsCount(); got != 1 {
+		t.Errorf("BoolExpressionsCount() = %d, want 1", got)
+	}
+}
+
+func TestAnalyserFindsNoAssumptionsInForInvertedCommaOk(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "loop.go")
+	code := `package main
+
+func Loop(m map[string]int, k string) {
+	for _, ok := m[k]; !ok; {
+		break
+	}
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+
+	if got := result.AssumptionsCount(); got != 0 {
+		t.Errorf("AssumptionsCount() = %d, want 0; assumptions: %#v", got, result.Assumptions())
+	}
+}
+
+func TestAnalyserFlagsGeneralBooleanNotOutsideCommaOk(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "not.go")
+	code := `package main
+
+func Guard(ready bool) {
+	if !ready {
+		return
+	}
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+
+	if got := result.AssumptionsCount(); got != 1 {
+		t.Fatalf("AssumptionsCount() = %d, want 1", got)
+	}
+}
+
+func TestAnalyserFlagsBooleanNotWhenVariableDiffers(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "diff.go")
+	code := `package main
+
+func Guard(m map[string]int, k string, ready bool) {
+	if val, ok := m[k]; !ready {
+		_ = val
+		return
+	}
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+
+	if got := result.AssumptionsCount(); got != 1 {
+		t.Fatalf("AssumptionsCount() = %d, want 1", got)
+	}
+}
+
+func TestAnalyserFlagsBooleanNotWhenInitIsNotCommaOk(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "call.go")
+	code := `package main
+
+func isReady() bool { return false }
+
+func Guard() {
+	if ready := isReady(); !ready {
+		return
+	}
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+
+	if got := result.AssumptionsCount(); got != 1 {
+		t.Fatalf("AssumptionsCount() = %d, want 1", got)
+	}
+}

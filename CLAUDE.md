@@ -38,7 +38,8 @@ the tests and `README.md` together. A node is an assumption when it is:
 - a `!=` comparison (e.g. `x != nil`);
 - a bare variable used as a condition (`if x`, `for x`), *unless* the variable
   is bound in the statement's init (the comma-ok idiom `if v, ok := x.(*T); ok`
-  is an assertion, not an assumption);
+  or inverted guard `if _, ok := x.(*T); !ok` is an assertion, not an
+  assumption);
 - a boolean-not of a variable (`!x`);
 - a `&&` / `||` mixing a bare variable with a comparison (`x && x == "test"`).
 

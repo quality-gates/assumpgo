@@ -125,6 +125,81 @@ func TestScanIgnoresTypeAssertion(t *testing.T) {
 	}
 }
 
+func TestInvertedCommaOkCond(t *testing.T) {
+	d := NewDetector()
+
+	// Positive cases: valid inverted comma-ok assertions.
+	valid := []string{
+		"if _, ok := v.(*Dog); !ok {}",
+		"if val, ok := m[k]; !ok {}",
+		"if _, ok = v.(*Dog); !ok {}",
+		"if _, ok := v.(*Dog); (!ok) {}",
+		"if _, ok := (v.(*Dog)); !ok {}",
+		"if _, ok := v.(*Dog); !(ok) {}",
+		"if _, (ok) := v.(*Dog); !ok {}",
+		"for _, ok := m[k]; !ok; {}",
+	}
+	for _, src := range valid {
+		stmt := parseStmt(t, src)
+		var cond ast.Expr
+		switch s := stmt.(type) {
+		case *ast.IfStmt:
+			cond = d.invertedCommaOkCond(s.Init, s.Cond)
+		case *ast.ForStmt:
+			cond = d.invertedCommaOkCond(s.Init, s.Cond)
+		}
+		if cond == nil {
+			t.Errorf("expected %q to be recognized as inverted comma-ok", src)
+		}
+	}
+
+	// Negative cases: near-misses that must not be recognized as inverted comma-ok.
+	invalid := []string{
+		"if _, ok := v.(*Dog); ok {}",       // positive, not inverted
+		"if _, ok := v.(*Dog); !other {}",   // different variable
+		"if ok := check(); !ok {}",          // single variable init, not comma-ok
+		"if val, ok := fn(); !ok {}",        // function call, not comma-ok expr
+		"if !ok {}",                         // nil init
+		"if _, _ := v.(*Dog); true {}",      // blank ok identifier
+		"if a, b, c := m[k]; !c {}",         // 3 variables
+		"if a := 1; !a {}",                  // 1 variable
+		"if a, b = 1, 2; !b {}",             // 2 RHS expressions
+		"if a, b[0] = v.(*Dog); !b {}",      // LHS[1] is index, not ident
+		"if a, b := v.(*Dog); b == true {}", // binary expr condition, not unary NOT
+		"if a, b := v.(*Dog); -b {}",        // unary op is not token.NOT
+		"if a, b := v.(*Dog); !fn() {}",     // unary operand is not variable ident
+	}
+	for _, src := range invalid {
+		stmt := parseStmt(t, src)
+		var cond ast.Expr
+		switch s := stmt.(type) {
+		case *ast.IfStmt:
+			cond = d.invertedCommaOkCond(s.Init, s.Cond)
+		case *ast.ForStmt:
+			cond = d.invertedCommaOkCond(s.Init, s.Cond)
+		}
+		if cond != nil {
+			t.Errorf("expected %q not to be recognized as inverted comma-ok", src)
+		}
+	}
+
+	// Direct nil checks on invertedCommaOkCond and commaOkVarName.
+	if d.invertedCommaOkCond(nil, nil) != nil {
+		t.Error("expected nil init/cond to return nil")
+	}
+	if commaOkVarName(nil) != "" {
+		t.Error("expected nil init to return empty string")
+	}
+	// Init statement that is not an assignment.
+	if commaOkVarName(parseStmt(t, "var x int")) != "" {
+		t.Error("expected non-assignment init to return empty string")
+	}
+	// Condition without init.
+	if d.invertedCommaOkCond(parseStmt(t, "x := 1"), nil) != nil {
+		t.Error("expected nil cond to return nil")
+	}
+}
+
 func TestIsBoolExpression(t *testing.T) {
 	d := NewDetector()
 	cases := map[string]bool{
