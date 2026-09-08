@@ -45,6 +45,12 @@ func run(args []string, stdout, stderr *os.File) int {
 		return exitOK
 	}
 
+	renderer, err := rendererFor(*format)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return exitUsage
+	}
+
 	// The decorative banner is for humans reading the pretty table. In XML mode
 	// stdout is a data stream (the README advertises `-format xml` for CI), so
 	// emitting the banner there would produce invalid XML.
@@ -77,11 +83,6 @@ func run(args []string, stdout, stderr *os.File) int {
 		return exitUsage
 	}
 
-	var renderer assumpgo.Output = assumpgo.PrettyOutput{}
-	if *format == "xml" {
-		renderer = assumpgo.XMLOutput{}
-	}
-
 	sink := stdout
 	if *output != "" {
 		// os.Create truncates, so refuse to write the report over a file that
@@ -112,4 +113,15 @@ func run(args []string, stdout, stderr *os.File) int {
 	}
 
 	return exitOK
+}
+
+func rendererFor(format string) (assumpgo.Output, error) {
+	switch format {
+	case "pretty":
+		return assumpgo.PrettyOutput{}, nil
+	case "xml":
+		return assumpgo.XMLOutput{}, nil
+	default:
+		return nil, fmt.Errorf("unknown format %q (want pretty or xml)", format)
+	}
 }

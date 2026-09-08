@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/xml"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -381,5 +382,97 @@ func TestExcludeNonexistentPath(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "dog.go") {
 		t.Errorf("expected dog.go in output, got:\n%s", stdout)
+	}
+}
+
+func writeEmpty(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "empty.go")
+	if err := os.WriteFile(path, []byte("package p\nfunc F() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// TestUnknownFormatIsUsageError locks in the issue #37 fix: only lowercase
+// pretty and xml are accepted. Anything else — including XML, json, and "" —
+// is a usage error, not a silent pretty report.
+func TestUnknownFormatIsUsageError(t *testing.T) {
+	src := writeEmpty(t)
+
+	tests := []struct {
+		name string
+		flag string
+		val  string
+	}{
+		{name: "XML uppercase", flag: "-format", val: "XML"},
+		{name: "json", flag: "-format", val: "json"},
+		{name: "empty", flag: "-format", val: ""},
+		{name: "Pretty mixed case", flag: "-format", val: "Pretty"},
+		{name: "XML shorthand", flag: "-f", val: "XML"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout, stderr, code := runCapture(t, tt.flag, tt.val, src)
+
+			if code != exitUsage {
+				t.Fatalf("exit = %d, want %d", code, exitUsage)
+			}
+			if !strings.Contains(stderr, "unknown format") {
+				t.Errorf("stderr should report unknown format:\n%s", stderr)
+			}
+			if !strings.Contains(stderr, fmt.Sprintf("%q", tt.val)) {
+				t.Errorf("stderr should quote the rejected value %q:\n%s", tt.val, stderr)
+			}
+			if strings.Contains(stdout, "assumpgo analyser") {
+				t.Errorf("banner leaked into stdout:\n%s", stdout)
+			}
+			if strings.Contains(stdout, "boolean expressions") {
+				t.Errorf("pretty report leaked into stdout:\n%s", stdout)
+			}
+			if strings.HasPrefix(strings.TrimSpace(stdout), "<?xml") {
+				t.Errorf("XML report leaked into stdout:\n%s", stdout)
+			}
+		})
+	}
+}
+
+func TestAcceptedFormats(t *testing.T) {
+	src := writeEmpty(t)
+
+	tests := []struct {
+		name string
+		args []string
+		xml  bool
+	}{
+		{name: "pretty", args: []string{"-format", "pretty", src}},
+		{name: "pretty shorthand", args: []string{"-f", "pretty", src}},
+		{name: "xml", args: []string{"-format", "xml", src}, xml: true},
+		{name: "xml shorthand", args: []string{"-f", "xml", src}, xml: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout, stderr, code := runCapture(t, tt.args...)
+			if code != exitOK {
+				t.Fatalf("exit = %d, want %d (stderr: %s)", code, exitOK, stderr)
+			}
+			if strings.Contains(stderr, "unknown format") {
+				t.Errorf("accepted format rejected:\n%s", stderr)
+			}
+			if tt.xml {
+				if !strings.HasPrefix(strings.TrimSpace(stdout), "<?xml") {
+					t.Errorf("xml format should emit XML:\n%s", stdout)
+				}
+				if strings.Contains(stdout, "assumpgo analyser") {
+					t.Errorf("banner leaked into XML stdout:\n%s", stdout)
+				}
+				return
+			}
+			if !strings.Contains(stdout, "assumpgo analyser v"+version) {
+				t.Errorf("pretty format should show the banner:\n%s", stdout)
+			}
+		})
 	}
 }
