@@ -114,6 +114,7 @@ func (a *Analyser) analyseFile(path string, result *Result) error {
 	lines := strings.Split(string(src), "\n")
 
 	ignored := make(map[ast.Node]struct{})
+	ignoredAssumptions := make(map[ast.Node]struct{})
 
 	ast.Inspect(f, func(node ast.Node) bool {
 		switch n := node.(type) {
@@ -122,11 +123,13 @@ func (a *Analyser) analyseFile(path string, result *Result) error {
 				ignored[cond] = struct{}{}
 				ignored[n.Cond] = struct{}{}
 			}
+			markCommaOkConditionNodes(n.Init, n.Cond, ignored, ignoredAssumptions)
 		case *ast.ForStmt:
 			if cond := a.detector.invertedCommaOkCond(n.Init, n.Cond); cond != nil {
 				ignored[cond] = struct{}{}
 				ignored[n.Cond] = struct{}{}
 			}
+			markCommaOkConditionNodes(n.Init, n.Cond, ignored, ignoredAssumptions)
 		}
 
 		if _, skip := ignored[node]; skip {
@@ -135,6 +138,10 @@ func (a *Analyser) analyseFile(path string, result *Result) error {
 
 		if a.detector.IsBoolExpression(node) {
 			result.increaseBoolExpressionsCount()
+		}
+
+		if _, skip := ignoredAssumptions[node]; skip {
+			return true
 		}
 
 		if a.detector.Scan(node) {
@@ -146,6 +153,23 @@ func (a *Analyser) analyseFile(path string, result *Result) error {
 	})
 
 	return nil
+}
+
+func markCommaOkConditionNodes(init ast.Stmt, cond ast.Expr, ignored, ignoredAssumptions map[ast.Node]struct{}) {
+	okName := commaOkVarName(init)
+	if okName == "" || cond == nil {
+		return
+	}
+
+	ast.Inspect(cond, func(node ast.Node) bool {
+		if isCommaOkNotNode(node, okName) {
+			ignored[node] = struct{}{}
+		}
+		if isCommaOkLogicalNode(node, okName) {
+			ignoredAssumptions[node] = struct{}{}
+		}
+		return true
+	})
 }
 
 func readLine(lines []string, line int) string {

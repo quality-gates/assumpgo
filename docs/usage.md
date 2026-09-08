@@ -80,5 +80,6 @@ The idiomatic comma-ok assertion — type assertion (`if v, ok := x.(*T); ok`),
 map index (`if v, ok := m[k]; ok`), or channel receive (`if v, ok := <-ch; ok`),
 including their inverted guards (`!ok`) — binds its variable in the `if` or
 `for` init statement and is therefore **not** treated as a bare-variable
-assumption.
-
+assumption. This remains true when `ok` or `!ok` is combined with another
+condition, such as `ok && v != nil`; the separate `!=` comparison is still
+reported.

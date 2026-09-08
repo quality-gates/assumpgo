@@ -60,7 +60,9 @@ There is no ruleset file: the analyzer’s pattern set is fixed. See
 
 assumpgo has no per-line disable comment. Skip paths with `-exclude`, or fix
 the check to a positive assertion (type assert / comma-ok / positive `==`) so
-it is no longer an assumption.
+it is no longer an assumption. A comma-ok `ok` or `!ok` remains an assertion
+when combined with another condition; a separate negative comparison in that
+condition is still reported.
 
 ## Drop it into CI
 

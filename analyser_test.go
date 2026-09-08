@@ -381,6 +381,197 @@ func Check(cat any) {
 	}
 }
 
+func TestAnalyserDoesNotFlagCommaOkVariableInLogicalCondition(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "guard.go")
+	code := `package main
+
+func Check(x any) {
+	if v, ok := x.(*int); ok && v != nil {
+		_ = v
+	}
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+	want := []Assumption{{File: src, Line: 4, Message: "if v, ok := x.(*int); ok && v != nil {"}}
+	if got := result.Assumptions(); !reflect.DeepEqual(got, want) {
+		t.Errorf("assumptions mismatch:\n got: %#v\nwant: %#v", got, want)
+	}
+	if got := result.BoolExpressionsCount(); got != 3 {
+		t.Errorf("BoolExpressionsCount() = %d, want 3", got)
+	}
+	if got := result.Percentage(); got != 33 {
+		t.Errorf("Percentage() = %d, want 33", got)
+	}
+}
+
+func TestAnalyserHandlesCommaOkLogicalConditions(t *testing.T) {
+	tests := []struct {
+		name            string
+		code            string
+		wantLine        int
+		wantMessage     string
+		wantAssumptions int
+		wantBoolExprs   int
+		wantPercentage  int
+	}{
+		{
+			name: "map lookup with reversed or",
+			code: `package main
+
+func Check(m map[string]string, k string) {
+	if v, ok := m[k]; v != "" || ok {
+		_ = v
+	}
+}
+`,
+			wantLine:        4,
+			wantMessage:     `if v, ok := m[k]; v != "" || ok {`,
+			wantAssumptions: 1,
+			wantBoolExprs:   3,
+			wantPercentage:  33,
+		},
+		{
+			name: "inverted type assertion with and",
+			code: `package main
+
+func Check(x any) {
+	if v, ok := x.(*int); !ok && v != nil {
+		_ = v
+	}
+}
+`,
+			wantLine:        4,
+			wantMessage:     `if v, ok := x.(*int); !ok && v != nil {`,
+			wantAssumptions: 1,
+			wantBoolExprs:   3,
+			wantPercentage:  33,
+		},
+		{
+			name: "for condition",
+			code: `package main
+
+func Check(m map[string]string, k string) {
+	for v, ok := m[k]; ok || v != ""; {
+		break
+	}
+}
+`,
+			wantLine:        4,
+			wantMessage:     `for v, ok := m[k]; ok || v != ""; {`,
+			wantAssumptions: 1,
+			wantBoolExprs:   3,
+			wantPercentage:  33,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "guard.go")
+			if err := os.WriteFile(src, []byte(tt.code), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			analyser := NewAnalyser(NewDetector(), nil)
+			result, err := analyser.Analyse([]string{src})
+			if err != nil {
+				t.Fatalf("analyse: %v", err)
+			}
+
+			want := []Assumption{{File: src, Line: tt.wantLine, Message: tt.wantMessage}}
+			if got := result.Assumptions(); !reflect.DeepEqual(got, want) {
+				t.Errorf("assumptions mismatch:\n got: %#v\nwant: %#v", got, want)
+			}
+			if got := result.BoolExpressionsCount(); got != tt.wantBoolExprs {
+				t.Errorf("BoolExpressionsCount() = %d, want %d", got, tt.wantBoolExprs)
+			}
+			if got := result.AssumptionsCount(); got != tt.wantAssumptions {
+				t.Errorf("AssumptionsCount() = %d, want %d", got, tt.wantAssumptions)
+			}
+			if got := result.Percentage(); got != tt.wantPercentage {
+				t.Errorf("Percentage() = %d, want %d", got, tt.wantPercentage)
+			}
+		})
+	}
+}
+
+func TestAnalyserKeepsNonCommaOkLogicalAssumptions(t *testing.T) {
+	tests := []struct {
+		name            string
+		code            string
+		wantLine        int
+		wantMessage     string
+		wantAssumptions int
+	}{
+		{
+			name: "function call init",
+			code: `package main
+
+func lookup() (int, bool) { return 1, true }
+
+func Check() {
+	if v, ok := lookup(); ok && v != 0 {
+		_ = v
+	}
+}
+`,
+			wantLine:        6,
+			wantMessage:     `if v, ok := lookup(); ok && v != 0 {`,
+			wantAssumptions: 2,
+		},
+		{
+			name: "bare variable without init",
+			code: `package main
+
+func Check(ready bool, v *int) {
+	if ready && v != nil {
+		_ = v
+	}
+}
+`,
+			wantLine:        4,
+			wantMessage:     `if ready && v != nil {`,
+			wantAssumptions: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "guard.go")
+			if err := os.WriteFile(src, []byte(tt.code), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			analyser := NewAnalyser(NewDetector(), nil)
+			result, err := analyser.Analyse([]string{src})
+			if err != nil {
+				t.Fatalf("analyse: %v", err)
+			}
+
+			want := []Assumption{
+				{File: src, Line: tt.wantLine, Message: tt.wantMessage},
+				{File: src, Line: tt.wantLine, Message: tt.wantMessage},
+			}
+			if got := result.Assumptions(); !reflect.DeepEqual(got, want) {
+				t.Errorf("assumptions mismatch:\n got: %#v\nwant: %#v", got, want)
+			}
+			if got := result.AssumptionsCount(); got != tt.wantAssumptions {
+				t.Errorf("AssumptionsCount() = %d, want %d", got, tt.wantAssumptions)
+			}
+		})
+	}
+}
+
 func TestAnalyserFindsNoAssumptionsInInvertedMapLookup(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "map.go")

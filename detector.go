@@ -187,6 +187,32 @@ func (d *Detector) invertedCommaOkCond(init ast.Stmt, cond ast.Expr) ast.Expr {
 	return unary
 }
 
+// isCommaOkNotNode reports whether node is a boolean-not of the ok variable
+// bound by a comma-ok assignment.
+func isCommaOkNotNode(node ast.Node, okName string) bool {
+	unary, ok := node.(*ast.UnaryExpr)
+	return ok && unary.Op == token.NOT && isNamedVar(unary.X, okName)
+}
+
+// isCommaOkLogicalNode reports whether node is a logical expression whose
+// variable-plus-binary assumption comes from the comma-ok ok variable.
+func isCommaOkLogicalNode(node ast.Node, okName string) bool {
+	binary, ok := node.(*ast.BinaryExpr)
+	if !ok || (binary.Op != token.LAND && binary.Op != token.LOR) {
+		return false
+	}
+
+	left := unwrap(binary.X)
+	right := unwrap(binary.Y)
+	return (isNamedVar(left, okName) && isBinary(right) && !isPureVarLogicalChain(right)) ||
+		(isNamedVar(right, okName) && isBinary(left) && !isPureVarLogicalChain(left))
+}
+
+func isNamedVar(expr ast.Node, name string) bool {
+	ident, ok := unwrap(expr).(*ast.Ident)
+	return ok && ident.Name == name
+}
+
 // commaOkVarName returns the name of the ok variable bound by a comma-ok
 // assignment in init. It returns an empty string when init is not a comma-ok
 // assignment.
