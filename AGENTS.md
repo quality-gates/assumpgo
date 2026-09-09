@@ -55,7 +55,10 @@ the tests and `README.md` together. A node is an assumption when it is:
   or inverted guard `if _, ok := x.(*T); !ok` is an assertion, not an
   assumption);
 - a boolean-not of a variable (`!x`);
-- a `&&` / `||` mixing a bare variable with a comparison (`x && x == "test"`).
+- a `&&` / `||` mixing a bare variable with a comparison (`x && x == "test"`,
+  `x && y && n == 1`). Operand order and parentheses must not hide a mix;
+  pure var chains (`x && y && z`) and two comparisons (`x == 1 && y == 2`)
+  are still not mixes.
 
 **Deliberate divergence from php-assumptions:** Go's `==` is strict (the analog
 of PHP's `===`, which php-assumptions does *not* flag), so positive equality —

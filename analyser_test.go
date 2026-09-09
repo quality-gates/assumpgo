@@ -284,6 +284,96 @@ func F(x *int) bool {
 	}
 }
 
+// TestAnalyserDetectsLeftAssociativeVarComparisonMix is the regression for
+// issue #39: extra bare variables to the left of a mix must not hide it.
+func TestAnalyserDetectsLeftAssociativeVarComparisonMix(t *testing.T) {
+	tests := []struct {
+		name            string
+		code            string
+		wantAssumptions int
+		wantBoolExprs   int
+		wantMessage     string
+	}{
+		{
+			name: "vars to the left of a comparison",
+			code: `package p
+
+func F(x, y bool, n int) {
+	if x && y && n == 1 {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantBoolExprs:   3,
+			wantMessage:     "if x && y && n == 1 {",
+		},
+		{
+			name: "parenthesized vars to the left of a comparison",
+			code: `package p
+
+func F(x, y bool, n int) {
+	if (x && y) && n == 1 {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantBoolExprs:   3,
+			wantMessage:     "if (x && y) && n == 1 {",
+		},
+		{
+			name: "pure var chain is still not a mix",
+			code: `package p
+
+func F(x, y, z bool) {
+	if x && y && z {
+	}
+}
+`,
+			wantAssumptions: 0,
+			wantBoolExprs:   3,
+		},
+		{
+			name: "two comparisons are still not a mix",
+			code: `package p
+
+func F(x, y int) {
+	if x == 1 && y == 2 {
+	}
+}
+`,
+			wantAssumptions: 0,
+			wantBoolExprs:   2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "mix.go")
+			if err := os.WriteFile(src, []byte(tt.code), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			analyser := NewAnalyser(NewDetector(), nil)
+			result, err := analyser.Analyse([]string{src})
+			if err != nil {
+				t.Fatalf("analyse: %v", err)
+			}
+
+			if got := result.AssumptionsCount(); got != tt.wantAssumptions {
+				t.Errorf("AssumptionsCount() = %d, want %d; assumptions: %#v", got, tt.wantAssumptions, result.Assumptions())
+			}
+			if got := result.BoolExpressionsCount(); got != tt.wantBoolExprs {
+				t.Errorf("BoolExpressionsCount() = %d, want %d", got, tt.wantBoolExprs)
+			}
+			if tt.wantAssumptions > 0 {
+				if msg := result.Assumptions()[0].Message; msg != tt.wantMessage {
+					t.Errorf("message = %q, want %q", msg, tt.wantMessage)
+				}
+			}
+		})
+	}
+}
+
 func TestPercentageRounds(t *testing.T) {
 	r := &Result{boolExpressionsCount: 8}
 	r.addAssumption("a.go", 1, "x")

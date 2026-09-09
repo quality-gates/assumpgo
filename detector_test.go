@@ -101,6 +101,26 @@ func TestScanDetectsLogicalWithVariable(t *testing.T) {
 	}
 }
 
+// TestScanDetectsLeftAssociativeVarComparisonMix covers issue #39: extra bare
+// variables to the left of a mix must not hide it. `x && y && n == 1` parses
+// as `(x && y) && (n == 1)`, so both outer operands are binary.
+func TestScanDetectsLeftAssociativeVarComparisonMix(t *testing.T) {
+	d := NewDetector()
+	for _, src := range []string{
+		"x && y && n == 1",
+		"(x && y) && n == 1",
+		"x && y && z && n == 1",
+		"x || y || n == 1",
+		"x && y || n == 1",
+		"n == 1 && x && y",
+		"x && (y && n == 1)",
+	} {
+		if !d.Scan(parseExpr(t, src)) {
+			t.Errorf("expected %q to be an assumption", src)
+		}
+	}
+}
+
 // TestScanLogicalRequiresVariableAndComparison checks both halves of the
 // bidirectional rule: a `&&`/`||` is only an assumption when exactly one side
 // is a bare variable and the other is a (binary) comparison.
@@ -129,7 +149,7 @@ func TestScanLogicalRequiresVariableAndComparison(t *testing.T) {
 		}
 	}
 	// Two comparisons: no bare variable, not an assumption.
-	for _, src := range []string{`x == 1 && y == 2`, `x != 1 || y != 2`} {
+	for _, src := range []string{`x == 1 && y == 2`, `x != 1 || y != 2`, `x == 1 && y == 2 && z == 3`} {
 		if d.Scan(parseExpr(t, src)) {
 			t.Errorf("expected %q (two comparisons) not to be an assumption", src)
 		}
