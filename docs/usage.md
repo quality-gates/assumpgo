@@ -53,10 +53,12 @@ A boolean node is reported as an assumption when it is any of:
 | A negative comparison `!=` | `dog != nil`, `n != 0` |
 | A bare variable used as a condition | `if ready {`, `for running {` |
 | Boolean-not of a variable | `!ready` |
-| `&&` / `||` mixing a bare variable with a comparison | `x && x == "test"` |
+| `&&` / `||` mixing a bare variable with a comparison | `x && x == "test"`, `x && y && n == 1` |
 
 Chains of bare variables with no comparison anywhere — `x && y && z`,
-`x || y || z` — mix nothing and are **not** flagged.
+`x || y || z` — mix nothing and are **not** flagged. Extra variables on
+either side of a real mix do not hide it; operand order and parentheses do
+not change the result. Two comparisons (`x == 1 && y == 2`) are not a mix.
 
 The **denominator** (boolean expressions) counts every `if`, every `for` with a
 condition, and every `&&` / `||`. Because `!=` and `!var` are flagged wherever

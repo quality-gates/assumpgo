@@ -30,8 +30,8 @@ func NewDetector() *Detector {
 func (d *Detector) Scan(node ast.Node) bool {
 	switch n := node.(type) {
 	case *ast.BinaryExpr:
-		// `&&` / `||` where one operand is a bare variable and the other is a
-		// (comparison or logical) expression, e.g. `x && x == "test"`.
+		// `&&` / `||` that mixes a bare variable with a comparison, e.g.
+		// `x && x == "test"` or `x && y && n == 1`.
 		if n.Op == token.LAND || n.Op == token.LOR {
 			return d.bidirectionalCheck(n)
 		}
@@ -87,17 +87,33 @@ func (d *Detector) isVariableExpression(node ast.Node) bool {
 	return false
 }
 
-// bidirectionalCheck reports whether one operand of a `&&`/`||` is a bare
-// variable and the other is a binary expression, in either order. Mirrors the
-// PHP Variable + BinaryOp bidirectional check. A binary operand that is itself
-// a chain of bare variables (`x && y && z` parses as `(x && y) && z`) does not
-// count: it carries no comparison, so the chain mixes nothing.
+// bidirectionalCheck reports whether a `&&`/`||` tree mixes a bare variable
+// with a comparison. Mirrors the PHP Variable + BinaryOp bidirectional check,
+// but walks the whole tree so left-associative grouping cannot hide a mix
+// (`x && y && n == 1` parses as `(x && y) && (n == 1)`). A chain of only
+// variables contains no comparison and is not a mix.
 func (d *Detector) bidirectionalCheck(n *ast.BinaryExpr) bool {
-	left := unwrap(n.X)
-	right := unwrap(n.Y)
+	hasVar, hasCmp := logicalMix(n)
+	return hasVar && hasCmp
+}
 
-	return (isVarIdent(left) && isBinary(right) && !isPureVarLogicalChain(right)) ||
-		(isVarIdent(right) && isBinary(left) && !isPureVarLogicalChain(left))
+// logicalMix walks a `&&`/`||` tree and reports whether it contains a bare
+// variable operand and a non-logical binary operand (a comparison).
+func logicalMix(expr ast.Node) (hasVar, hasCmp bool) {
+	switch e := unwrap(expr).(type) {
+	case *ast.Ident:
+		return isVarIdent(e), false
+	case *ast.BinaryExpr:
+		if e.Op != token.LAND && e.Op != token.LOR {
+			return false, true
+		}
+
+		v1, c1 := logicalMix(e.X)
+		v2, c2 := logicalMix(e.Y)
+		return v1 || v2, c1 || c2
+	}
+
+	return false, false
 }
 
 // isPureVarLogicalChain reports whether expr is a `&&`/`||` expression built
