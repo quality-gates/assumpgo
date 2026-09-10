@@ -346,6 +346,63 @@ func TestOutputRefusesToOverwriteAnalysedFile(t *testing.T) {
 	}
 }
 
+// TestOutputRefusesToOverwriteAnalysedFileAliases locks in the issue #50 fix:
+// filesystem aliases of an analysed source must be refused before os.Create
+// can truncate the source file.
+func TestOutputRefusesToOverwriteAnalysedFileAliases(t *testing.T) {
+	tests := []struct {
+		name  string
+		alias func(t *testing.T, victim, output string)
+	}{
+		{
+			name: "symlink",
+			alias: func(t *testing.T, victim, output string) {
+				t.Helper()
+				if err := os.Symlink(filepath.Base(victim), output); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "hard link",
+			alias: func(t *testing.T, victim, output string) {
+				t.Helper()
+				if err := os.Link(victim, output); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Chdir(dir)
+			victim := filepath.Join(dir, "victim.go")
+			src := writeSource(t, victim)
+			output := "report.txt"
+			tt.alias(t, victim, output)
+
+			_, stderr, code := runCapture(t, "-output", output, "victim.go")
+
+			if code != exitUsage {
+				t.Fatalf("exit = %d, want %d", code, exitUsage)
+			}
+			if !strings.Contains(stderr, "refusing to overwrite analysed source file: "+output) {
+				t.Errorf("stderr should name the refused path:\n%s", stderr)
+			}
+
+			got, err := os.ReadFile(victim)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != string(src) {
+				t.Errorf("analysed source was overwritten:\n%s", got)
+			}
+		})
+	}
+}
+
 // TestOutputToNonTargetPathStillWorks pins the positive control: writing to a
 // path that was not analysed must keep working.
 func TestOutputToNonTargetPathStillWorks(t *testing.T) {
