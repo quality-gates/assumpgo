@@ -15,7 +15,8 @@ assumpgo -version
 `-format json`, and `-format ""` are usage errors (exit `100`), not a silent
 fallback to pretty.
 
-`-output` writes the report to a file instead of stdout. A path that was
+`-output` writes the report to a file instead of stdout, including the pretty
+banner. A path that was
 collected as an analysis target is refused with exit `100` and left untouched —
 `assumpgo -output victim.go victim.go` reports an error rather than replacing
 your source with the report.
