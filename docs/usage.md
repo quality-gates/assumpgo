@@ -56,6 +56,12 @@ A boolean node is reported as an assumption when it is any of:
 | Boolean-not of a variable | `!ready` |
 | `&&` / `||` mixing a bare variable with a comparison | `x && x == "test"`, `x && y && n == 1` |
 
+A named constant used as a condition (`const Ready = true` … `if Ready {`) is
+deterministic, not a weak assumption, so it is **not** flagged. This holds
+whether the constant is declared in the same file or in another file of the
+same package — assumpgo indexes the package-level constants of every Go file
+in the directory alongside the file it is analysing.
+
 Chains of bare variables with no comparison anywhere — `x && y && z`,
 `x || y || z` — mix nothing and are **not** flagged. Extra variables on
 either side of a real mix do not hide it; operand order and parentheses do
