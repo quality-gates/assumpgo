@@ -81,10 +81,12 @@ on assumpgo with two hard gates, the same standards mutago holds itself to:
 **Run the gates locally before committing.** Install mutago (CI installs it the
 same way), then run against the same package CI uses:
 
+For mutation tests, set `GOMAXPROCS=1` and pass `--workers=1` to `mutago` to keep the host responsive.
+
 ```bash
 go install github.com/quality-gates/mutago/v2/cmd/mutago@latest
-"$(go env GOPATH)/bin/mutago" \
-  --exec-timeout 30 --coverage --min-msi 75 --min-covered-msi 80 \
+GOMAXPROCS=1 "$(go env GOPATH)/bin/mutago" \
+  --exec-timeout 30 --coverage --workers=1 --min-msi 75 --min-covered-msi 80 \
   github.com/quality-gates/assumpgo
 ```
 
