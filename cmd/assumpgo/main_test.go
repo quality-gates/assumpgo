@@ -375,6 +375,48 @@ func TestOutputToNonTargetPathStillWorks(t *testing.T) {
 	}
 }
 
+// TestPrettyOutputDoesNotLeakBannerToStdout locks in the issue #49 fix: when
+// -output redirects the pretty report, stdout stays empty and the banner
+// follows the report file with the table.
+func TestPrettyOutputDoesNotLeakBannerToStdout(t *testing.T) {
+	tests := []struct {
+		name string
+		flag string
+	}{
+		{name: "output flag", flag: "-output"},
+		{name: "output shorthand", flag: "-o"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "src.go")
+			writeSource(t, src)
+			report := filepath.Join(dir, "report.txt")
+
+			stdout, stderr, code := runCapture(t, tt.flag, report, src)
+
+			if code != exitAssumption {
+				t.Fatalf("exit = %d, want %d (stderr: %s)", code, exitAssumption, stderr)
+			}
+			if stdout != "" {
+				t.Errorf("stdout should be empty when %s is set, got:\n%s", tt.flag, stdout)
+			}
+			data, err := os.ReadFile(report)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := string(data)
+			if !strings.Contains(got, "assumpgo analyser v"+version) {
+				t.Errorf("report file should contain the banner:\n%s", got)
+			}
+			if !strings.Contains(got, "boolean expressions") {
+				t.Errorf("report file should contain the table:\n%s", got)
+			}
+		})
+	}
+}
+
 func TestExcludeNonexistentPath(t *testing.T) {
 	stdout, stderr, code := runCapture(t, "-exclude", "vendor,generated", fixture("dog.go"))
 	if code != exitAssumption {

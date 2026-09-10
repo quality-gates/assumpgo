@@ -51,13 +51,6 @@ func run(args []string, stdout, stderr *os.File) int {
 		return exitUsage
 	}
 
-	// The decorative banner is for humans reading the pretty table. In XML mode
-	// stdout is a data stream (the README advertises `-format xml` for CI), so
-	// emitting the banner there would produce invalid XML.
-	if *format != "xml" {
-		fmt.Fprintf(stdout, "assumpgo analyser v%s by quality-gates\n\n", version)
-	}
-
 	if fs.NArg() < 1 {
 		fmt.Fprintln(stderr, "error: missing target path")
 		fs.Usage()
@@ -101,6 +94,14 @@ func run(args []string, stdout, stderr *os.File) int {
 		}
 		defer f.Close()
 		sink = f
+	}
+
+	// The decorative banner is for humans reading the pretty table. It follows
+	// the report sink so `-output` does not leave it on stdout. In XML mode
+	// the destination is a data stream (the README advertises `-format xml`
+	// for CI), so emitting the banner there would produce invalid XML.
+	if *format != "xml" {
+		fmt.Fprintf(sink, "assumpgo analyser v%s by quality-gates\n\n", version)
 	}
 
 	if err := renderer.Output(sink, result); err != nil {
