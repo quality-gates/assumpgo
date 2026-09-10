@@ -138,8 +138,8 @@ func isPureVarLogicalChain(expr ast.Node) bool {
 }
 
 // isVarIdent reports whether expr is a bare identifier that refers to a
-// variable, excluding the predeclared literals true/false/nil/iota (the Go
-// analog of PHP distinguishing a Variable from a ConstFetch).
+// variable, excluding predeclared literals and resolved named constants (the
+// Go analog of PHP distinguishing a Variable from a ConstFetch).
 func isVarIdent(expr ast.Node) bool {
 	ident, ok := unwrap(expr).(*ast.Ident)
 	if !ok {
@@ -148,6 +148,9 @@ func isVarIdent(expr ast.Node) bool {
 
 	switch ident.Name {
 	case "true", "false", "nil", "iota":
+		return false
+	}
+	if ident.Obj != nil && ident.Obj.Kind == ast.Con {
 		return false
 	}
 

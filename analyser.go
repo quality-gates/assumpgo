@@ -106,7 +106,9 @@ func (a *Analyser) analyseFile(path string, result *Result) error {
 	}
 
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, src, parser.SkipObjectResolution)
+	// Keep object resolution enabled so the detector can distinguish named
+	// constants from variables.
+	f, err := parser.ParseFile(fset, path, src, 0)
 	if err != nil {
 		return err
 	}
