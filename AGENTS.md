@@ -50,7 +50,9 @@ These rules are the public contract — changing them changes results, so update
 the tests and `README.md` together. A node is an assumption when it is:
 
 - a `!=` comparison (e.g. `x != nil`);
-- a bare variable used as a condition (`if x`, `for x`), *unless* the variable
+- a bare variable used as a condition (`if x`, `for x`), *unless* the name is a
+  package-level named constant (resolved across every Go file in the same
+  directory and package, not just the file being analysed), or the variable
   is bound in the statement's init (the comma-ok idiom `if v, ok := x.(*T); ok`
   or inverted guard `if _, ok := x.(*T); !ok` is an assertion, not an
   assumption);

@@ -84,6 +84,7 @@ func NewAnalyser(detector *Detector, excludes []string) *Analyser {
 // Analyse parses and inspects each file, returning the aggregated Result.
 func (a *Analyser) Analyse(files []string) (*Result, error) {
 	result := &Result{}
+	consts := newConstIndex()
 
 	for _, file := range files {
 		clean := filepath.Clean(file)
@@ -91,7 +92,7 @@ func (a *Analyser) Analyse(files []string) (*Result, error) {
 			continue
 		}
 
-		if err := a.analyseFile(clean, result); err != nil {
+		if err := a.analyseFile(clean, result, consts); err != nil {
 			return nil, err
 		}
 	}
@@ -99,7 +100,7 @@ func (a *Analyser) Analyse(files []string) (*Result, error) {
 	return result, nil
 }
 
-func (a *Analyser) analyseFile(path string, result *Result) error {
+func (a *Analyser) analyseFile(path string, result *Result, consts *constIndex) error {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -112,6 +113,11 @@ func (a *Analyser) analyseFile(path string, result *Result) error {
 	if err != nil {
 		return err
 	}
+
+	// Object resolution is per-file, so a constant declared in another file of
+	// the same package is left unresolved and would look like a variable
+	// (issue #58). Resolve those against the package's other files.
+	resolvePackageConsts(f, consts.names(filepath.Dir(path), f.Name.Name))
 
 	lines := strings.Split(string(src), "\n")
 
@@ -180,4 +186,98 @@ func readLine(lines []string, line int) string {
 	}
 
 	return strings.TrimSpace(lines[line-1])
+}
+
+// constIndex caches the package-level constant names declared in a directory,
+// keyed by directory and then by package name. A directory can hold more than
+// one package (a `_test` external test package alongside the package proper),
+// and a constant is only visible to files in its own package.
+type constIndex struct {
+	dirs map[string]map[string]map[string]struct{}
+}
+
+func newConstIndex() *constIndex {
+	return &constIndex{dirs: make(map[string]map[string]map[string]struct{})}
+}
+
+// names returns the package-level constant names declared by any Go file in
+// dir that belongs to package pkg.
+func (c *constIndex) names(dir, pkg string) map[string]struct{} {
+	byPkg, scanned := c.dirs[dir]
+	if !scanned {
+		byPkg = scanDirConsts(dir)
+		c.dirs[dir] = byPkg
+	}
+
+	return byPkg[pkg]
+}
+
+// scanDirConsts parses every Go file in dir and groups the package-level
+// constant names it declares by package name. Files that cannot be read or
+// parsed contribute nothing rather than failing the run: they are context for
+// the files actually being analysed, not targets themselves.
+func scanDirConsts(dir string) map[string]map[string]struct{} {
+	byPkg := make(map[string]map[string]struct{})
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return byPkg
+	}
+
+	fset := token.NewFileSet()
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+			continue
+		}
+
+		f, err := parser.ParseFile(fset, filepath.Join(dir, entry.Name()), nil, parser.SkipObjectResolution)
+		if err != nil {
+			continue
+		}
+
+		set, ok := byPkg[f.Name.Name]
+		if !ok {
+			set = make(map[string]struct{})
+			byPkg[f.Name.Name] = set
+		}
+		collectConstNames(f, set)
+	}
+
+	return byPkg
+}
+
+// collectConstNames adds every package-level constant name declared by f to
+// set. Only top-level declarations are package-level; a constant declared
+// inside a function is resolved by the parser already.
+func collectConstNames(f *ast.File, set map[string]struct{}) {
+	for _, decl := range f.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+
+		for _, spec := range gen.Specs {
+			value, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+
+			for _, name := range value.Names {
+				set[name.Name] = struct{}{}
+			}
+		}
+	}
+}
+
+// resolvePackageConsts attaches a constant object to each unresolved
+// identifier whose name is a package-level constant, so the detector sees it
+// as a constant rather than a bare variable. Identifiers the parser already
+// resolved (locals, same-file declarations) are absent from f.Unresolved and
+// are left untouched.
+func resolvePackageConsts(f *ast.File, names map[string]struct{}) {
+	for _, ident := range f.Unresolved {
+		if _, isConst := names[ident.Name]; isConst {
+			ident.Obj = ast.NewObj(ast.Con, ident.Name)
+		}
+	}
 }

@@ -860,3 +860,168 @@ func Check(running bool) {
 		t.Errorf("AssumptionsCount() = %d, want 2; assumptions: %#v", got, result.Assumptions())
 	}
 }
+
+func TestAnalyserIgnoresNamedConstantsDeclaredInAnotherPackageFile(t *testing.T) {
+	dir := t.TempDir()
+	defs := filepath.Join(dir, "defs.go")
+	uses := filepath.Join(dir, "uses.go")
+
+	// The var declaration precedes the const so that skipping non-const
+	// declarations has to continue rather than stop.
+	if err := os.WriteFile(defs, []byte("package p\n\nvar other = 1\n\nconst Ready = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Siblings that sort before defs.go and cannot contribute constants: the
+	// scan must skip past them rather than stop at them.
+	for name, body := range map[string]string{
+		"aaa.txt":       "not go at all\n",
+		"aaa_broken.go": "package p\n\nfunc ( {\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	code := `package p
+
+func check() bool {
+	if Ready {
+		return true
+	}
+	return false
+}
+`
+	if err := os.WriteFile(uses, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The constant must be ignored whether or not the declaring file is part
+	// of the same run (issue #58).
+	for _, tc := range []struct {
+		name  string
+		files []string
+	}{
+		{"use only", []string{uses}},
+		{"whole package", []string{defs, uses}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			analyser := NewAnalyser(NewDetector(), nil)
+			result, err := analyser.Analyse(tc.files)
+			if err != nil {
+				t.Fatalf("analyse: %v", err)
+			}
+
+			if got := result.AssumptionsCount(); got != 0 {
+				t.Errorf("AssumptionsCount() = %d, want 0; assumptions: %#v", got, result.Assumptions())
+			}
+			if got := result.BoolExpressionsCount(); got != 1 {
+				t.Errorf("BoolExpressionsCount() = %d, want 1", got)
+			}
+		})
+	}
+}
+
+func TestAnalyserFlagsVariableDeclaredInAnotherPackageFile(t *testing.T) {
+	dir := t.TempDir()
+	defs := filepath.Join(dir, "defs.go")
+	uses := filepath.Join(dir, "uses.go")
+
+	// A package-level var is not a constant, so the bare-variable rule still
+	// applies across files.
+	if err := os.WriteFile(defs, []byte("package p\n\nvar Ready = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code := `package p
+
+func check() bool {
+	if Ready {
+		return true
+	}
+	return false
+}
+`
+	if err := os.WriteFile(uses, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{uses})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+
+	if got := result.AssumptionsCount(); got != 1 {
+		t.Fatalf("AssumptionsCount() = %d, want 1; assumptions: %#v", got, result.Assumptions())
+	}
+	if got := result.Assumptions()[0].Line; got != 4 {
+		t.Errorf("assumption line = %d, want 4", got)
+	}
+}
+
+func TestAnalyserDoesNotBorrowConstantsFromAnotherPackageInSameDir(t *testing.T) {
+	dir := t.TempDir()
+	other := filepath.Join(dir, "other_test.go")
+	uses := filepath.Join(dir, "uses.go")
+
+	// A sibling file in a different package does not declare anything visible
+	// to this file, so its constant must not suppress the assumption.
+	if err := os.WriteFile(other, []byte("package p_test\n\nconst Ready = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code := `package p
+
+func check() bool {
+	if Ready {
+		return true
+	}
+	return false
+}
+`
+	if err := os.WriteFile(uses, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{uses})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+
+	if got := result.AssumptionsCount(); got != 1 {
+		t.Errorf("AssumptionsCount() = %d, want 1; assumptions: %#v", got, result.Assumptions())
+	}
+}
+
+func TestAnalyserIgnoresUnparseableSiblingWhenIndexingConstants(t *testing.T) {
+	dir := t.TempDir()
+	broken := filepath.Join(dir, "broken.go")
+	uses := filepath.Join(dir, "uses.go")
+
+	// A sibling that does not parse is context, not a target: it must be
+	// skipped without failing or crashing the run.
+	if err := os.WriteFile(broken, []byte("package p\n\nfunc ( {\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code := `package p
+
+func check() bool {
+	if ready {
+		return true
+	}
+	return false
+}
+`
+	if err := os.WriteFile(uses, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{uses})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+
+	if got := result.AssumptionsCount(); got != 1 {
+		t.Errorf("AssumptionsCount() = %d, want 1; assumptions: %#v", got, result.Assumptions())
+	}
+}
