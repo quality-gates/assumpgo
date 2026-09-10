@@ -105,14 +105,26 @@ func CollectTargets(targets []string) ([]string, error) {
 }
 
 // ContainsPath reports whether path matches any of paths, comparing absolute
-// forms so relative and absolute spellings of the same file both match.
+// forms and filesystem identity so path aliases of the same file both match.
 func ContainsPath(paths []string, path string) bool {
 	target := identityPath(path)
 	for _, p := range paths {
-		if identityPath(p) == target {
+		if identityPath(p) == target || sameFile(p, path) {
 			return true
 		}
 	}
 
 	return false
+}
+
+func sameFile(first, second string) bool {
+	firstInfo, err := os.Stat(first)
+	if err != nil {
+		return false
+	}
+	secondInfo, err := os.Stat(second)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(firstInfo, secondInfo)
 }

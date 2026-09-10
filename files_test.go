@@ -336,6 +336,43 @@ func TestContainsPathMatchesPathSpellings(t *testing.T) {
 	}
 }
 
+func TestContainsPathMatchesFilesystemAliases(t *testing.T) {
+	dir := t.TempDir()
+	victim := filepath.Join(dir, "victim.go")
+	symlink := filepath.Join(dir, "symlink.txt")
+	hardlink := filepath.Join(dir, "hardlink.txt")
+	other := filepath.Join(dir, "other.go")
+
+	if err := os.WriteFile(victim, []byte("package victim\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Base(victim), symlink); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(victim, hardlink); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(other, []byte("package other\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "symlink", path: symlink, want: true},
+		{name: "hard link", path: hardlink, want: true},
+		{name: "different file", path: other, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ContainsPath([]string{victim}, tt.path); got != tt.want {
+				t.Errorf("ContainsPath(%q, %q) = %v, want %v", victim, tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCollectTargetsDeduplicatesAbsoluteAndRelative(t *testing.T) {
 	dog := filepath.Join("testdata", "fixtures", "dog.go")
 	absDog, err := filepath.Abs(dog)
