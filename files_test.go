@@ -335,3 +335,31 @@ func TestContainsPathMatchesPathSpellings(t *testing.T) {
 		})
 	}
 }
+
+func TestCollectTargetsDeduplicatesAbsoluteAndRelative(t *testing.T) {
+	dog := filepath.Join("testdata", "fixtures", "dog.go")
+	absDog, err := filepath.Abs(dog)
+	if err != nil {
+		t.Fatalf("filepath.Abs(%q): %v", dog, err)
+	}
+
+	got, err := CollectTargets([]string{dog, absDog})
+	if err != nil {
+		t.Fatalf("CollectTargets: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("CollectTargets = %v, want 1 file", got)
+	}
+	if got[0] != dog {
+		t.Errorf("CollectTargets = %v, want [%q]", got, dog)
+	}
+
+	// Reversed order keeps the first spelling given.
+	got, err = CollectTargets([]string{absDog, dog})
+	if err != nil {
+		t.Fatalf("CollectTargets: %v", err)
+	}
+	if len(got) != 1 || got[0] != absDog {
+		t.Errorf("CollectTargets = %v, want [%q]", got, absDog)
+	}
+}

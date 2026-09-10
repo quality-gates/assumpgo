@@ -80,7 +80,9 @@ func CollectFromList(list string) ([]string, error) {
 }
 
 // CollectTargets expands a slice of target paths into a deduplicated list
-// of .go files.
+// of .go files. Deduplication compares absolute forms, so relative and
+// absolute spellings of the same file collapse to one entry; the first
+// spelling given is the one kept.
 func CollectTargets(targets []string) ([]string, error) {
 	var paths []string
 	seen := make(map[string]bool)
@@ -91,8 +93,9 @@ func CollectTargets(targets []string) ([]string, error) {
 		}
 		for _, p := range found {
 			clean := filepath.Clean(p)
-			if !seen[clean] {
-				seen[clean] = true
+			identity := identityPath(clean)
+			if !seen[identity] {
+				seen[identity] = true
 				paths = append(paths, clean)
 			}
 		}
