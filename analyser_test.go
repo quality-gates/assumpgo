@@ -87,6 +87,41 @@ func TestAnalyserFindsNoAssumptionsInAssertion(t *testing.T) {
 	}
 }
 
+func TestAnalyserIgnoresNamedBooleanConstants(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "const.go")
+	code := `package p
+
+const enabled = true
+
+func check() bool {
+	if enabled {
+		return true
+	}
+	return false
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+
+	if got := result.AssumptionsCount(); got != 0 {
+		t.Errorf("AssumptionsCount() = %d, want 0; assumptions: %#v", got, result.Assumptions())
+	}
+	if got := result.BoolExpressionsCount(); got != 1 {
+		t.Errorf("BoolExpressionsCount() = %d, want 1", got)
+	}
+	if got := result.Percentage(); got != 0 {
+		t.Errorf("Percentage() = %d, want 0", got)
+	}
+}
+
 func TestAnalyserHonoursExcludes(t *testing.T) {
 	file := filepath.Join("testdata", "fixtures", "dog.go")
 	analyser := NewAnalyser(NewDetector(), []string{file})
