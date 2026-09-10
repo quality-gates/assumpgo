@@ -227,6 +227,12 @@ func TestRuneWidth(t *testing.T) {
 		{0x80, 0},
 		{0x9f, 0},
 
+		// Nonspacing and enclosing combining marks are zero columns
+		{0x0301, 0}, // combining acute accent
+		{0x0328, 0}, // combining ogonek (Mn)
+		{0x20dd, 0}, // combining enclosing circle (Me)
+		{0x05d0, 1}, // Hebrew letter: not a combining mark
+
 		// Printable ASCII
 		{32, 1},
 		{'a', 1},
@@ -270,6 +276,59 @@ func TestRuneWidth(t *testing.T) {
 	}
 }
 
+// TestPrettyOutputCombiningMarkAlignment guards the reported bug: a message
+// containing a combining mark (here e + U+0301, two code points but one
+// terminal column) must not shift its row's pipes out of alignment. Unlike
+// TestPrettyOutputMultibyteAlignment, this test measures display width with an
+// independent routine (not stringWidth, the code under test) so the check is
+// not circular.
+func TestPrettyOutputCombiningMarkAlignment(t *testing.T) {
+	r := resultWith(
+		Assumption{File: "combining.go", Line: 3, Message: "if value != nil { // é"},
+		Assumption{File: "plain.go", Line: 9, Message: "if value != nil { // pure ascii message longer"},
+	)
+
+	var buf bytes.Buffer
+	if err := (PrettyOutput{}).Output(&buf, r); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	var tableLines []string
+	for _, l := range lines {
+		if l == "" {
+			break
+		}
+		tableLines = append(tableLines, l)
+	}
+	if len(tableLines) != 6 {
+		// 1 border + header + 1 separator + 2 rows + 1 border
+		t.Fatalf("expected 6 table lines, got %d:\n%s", len(tableLines), out)
+	}
+
+	// visualWidth counts terminal columns the way a terminal does for this
+	// input: every rune is one column except the combining acute accent
+	// (U+0301), which is zero columns.
+	visualWidth := func(s string) int {
+		w := 0
+		for _, r := range s {
+			if r != 0x0301 {
+				w++
+			}
+		}
+		return w
+	}
+
+	// The border is pure ASCII, so its byte length is its display width.
+	wantWidth := len(tableLines[0])
+	for i, l := range tableLines {
+		if got := visualWidth(l); got != wantWidth {
+			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, l)
+		}
+	}
+}
+
 func TestStringWidth(t *testing.T) {
 	tests := []struct {
 		input string
@@ -282,6 +341,14 @@ func TestStringWidth(t *testing.T) {
 		{"日本語", 6},
 		{"🚀 rocket", 9}, // 2 (🚀) + 1 (space) + 6 (rocket)
 		{"\x00abc", 3},  // null byte is width 0
+
+		// Combining marks are zero terminal width: "e" + U+0301 renders as
+		// one column, not two. The precomposed form (U+00E9) is one rune.
+		{"é", 1},
+		{"café", 4},
+		{"ą", 1},
+		{"x̨́", 1}, // multiple stacked marks stay one column
+		{"é", 1},   // precomposed U+00E9 is a single width-1 rune
 	}
 
 	for _, tt := range tests {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode"
 )
 
 // Output renders a Result.
@@ -106,6 +107,11 @@ func runeWidth(r rune) int {
 	if r < 32 || (r >= 0x7f && r < 0xa0) {
 		return 0
 	}
+	// Nonspacing and enclosing combining marks render inside the previous
+	// character's cell, so they occupy zero terminal columns.
+	if unicode.In(r, unicode.Mn, unicode.Me) {
+		return 0
+	}
 	if (r >= 0x1100 && r <= 0x11ff) ||
 		(r >= 0x2600 && r <= 0x27bf) ||
 		(r >= 0x2e80 && r <= 0xffef) ||
@@ -116,7 +122,8 @@ func runeWidth(r rune) int {
 }
 
 // stringWidth calculates the monospace visual display width of a string.
-// Printable ASCII characters have width 1. Control and non-printable characters have width 0.
+// Printable ASCII characters have width 1. Control, non-printable, and
+// combining characters have width 0.
 // East Asian Wide / Fullwidth characters and common emojis have width 2.
 func stringWidth(s string) int {
 	w := 0
