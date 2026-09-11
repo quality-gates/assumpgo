@@ -538,6 +538,234 @@ func Check(x any) {
 	}
 }
 
+func TestAnalyserDoesNotFlagCommaOkLogicalChain(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "guard.go")
+	code := `package main
+
+func Check(x any, a, b int) {
+	if _, ok := x.(*int); ok && a == 1 && b == 2 {
+	}
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+	if got := result.AssumptionsCount(); got != 0 {
+		t.Errorf("AssumptionsCount() = %d, want 0; assumptions: %#v", got, result.Assumptions())
+	}
+	if got := result.BoolExpressionsCount(); got != 3 {
+		t.Errorf("BoolExpressionsCount() = %d, want 3", got)
+	}
+	if got := result.Percentage(); got != 0 {
+		t.Errorf("Percentage() = %d, want 0", got)
+	}
+}
+
+func TestAnalyserDoesNotFlagChainedCommaOkConditions(t *testing.T) {
+	tests := []struct {
+		name          string
+		code          string
+		wantBoolExprs int
+	}{
+		{
+			name: "type assertion with and",
+			code: `package main
+
+func Check(x any, a, b int) {
+	if _, ok := x.(*int); ok && a == 1 && b == 2 {
+	}
+}
+`,
+			wantBoolExprs: 3,
+		},
+		{
+			name: "map lookup with and",
+			code: `package main
+
+func Check(m map[string]int, k string, a, b int) {
+	if _, ok := m[k]; ok && a == 1 && b == 2 {
+	}
+}
+`,
+			wantBoolExprs: 3,
+		},
+		{
+			name: "channel receive with and",
+			code: `package main
+
+func Check(ch <-chan int, a, b int) {
+	if _, ok := <-ch; ok && a == 1 && b == 2 {
+	}
+}
+`,
+			wantBoolExprs: 3,
+		},
+		{
+			name: "for condition",
+			code: `package main
+
+func Check(ch <-chan int, a, b int) {
+	for _, ok := <-ch; ok && a == 1 && b == 2; {
+		break
+	}
+}
+`,
+			wantBoolExprs: 3,
+		},
+		{
+			name: "or chain",
+			code: `package main
+
+func Check(x any, a, b int) {
+	if _, ok := x.(*int); ok || a == 1 || b == 2 {
+	}
+}
+`,
+			wantBoolExprs: 3,
+		},
+		{
+			name: "parenthesized comparisons",
+			code: `package main
+
+func Check(x any, a, b int) {
+	if _, ok := x.(*int); ok && (a == 1 && b == 2) {
+	}
+}
+`,
+			wantBoolExprs: 3,
+		},
+		{
+			name: "ok in the middle",
+			code: `package main
+
+func Check(x any, a, b int) {
+	if _, ok := x.(*int); a == 1 && ok && b == 2 {
+	}
+}
+`,
+			wantBoolExprs: 3,
+		},
+		{
+			name: "ok on the right",
+			code: `package main
+
+func Check(x any, a, b int) {
+	if _, ok := x.(*int); a == 1 && b == 2 && ok {
+	}
+}
+`,
+			wantBoolExprs: 3,
+		},
+		{
+			name: "function call in chain",
+			code: `package main
+
+func ready() bool { return true }
+
+func Check(x any, a int) {
+	if _, ok := x.(*int); ok && ready() && a == 1 {
+	}
+}
+`,
+			wantBoolExprs: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "guard.go")
+			if err := os.WriteFile(src, []byte(tt.code), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			analyser := NewAnalyser(NewDetector(), nil)
+			result, err := analyser.Analyse([]string{src})
+			if err != nil {
+				t.Fatalf("analyse: %v", err)
+			}
+			if got := result.AssumptionsCount(); got != 0 {
+				t.Errorf("AssumptionsCount() = %d, want 0; assumptions: %#v", got, result.Assumptions())
+			}
+			if got := result.BoolExpressionsCount(); got != tt.wantBoolExprs {
+				t.Errorf("BoolExpressionsCount() = %d, want %d", got, tt.wantBoolExprs)
+			}
+			if got := result.Percentage(); got != 0 {
+				t.Errorf("Percentage() = %d, want 0", got)
+			}
+		})
+	}
+}
+
+func TestAnalyserKeepsOtherBareVariablesInCommaOkChain(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "guard.go")
+	code := `package main
+
+func Check(x any, ready bool, a int) {
+	if _, ok := x.(*int); ok && ready && a == 1 {
+	}
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+	want := []Assumption{{File: src, Line: 4, Message: "if _, ok := x.(*int); ok && ready && a == 1 {"}}
+	if got := result.Assumptions(); !reflect.DeepEqual(got, want) {
+		t.Errorf("assumptions mismatch:\n got: %#v\nwant: %#v", got, want)
+	}
+	if got := result.BoolExpressionsCount(); got != 3 {
+		t.Errorf("BoolExpressionsCount() = %d, want 3", got)
+	}
+	if got := result.Percentage(); got != 33 {
+		t.Errorf("Percentage() = %d, want 33", got)
+	}
+}
+
+func TestAnalyserKeepsNegativeComparisonInCommaOkChain(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "guard.go")
+	code := `package main
+
+func Check(x any, a, b int) {
+	if _, ok := x.(*int); ok && a == 1 && b != 2 {
+	}
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+	want := []Assumption{{File: src, Line: 4, Message: "if _, ok := x.(*int); ok && a == 1 && b != 2 {"}}
+	if got := result.Assumptions(); !reflect.DeepEqual(got, want) {
+		t.Errorf("assumptions mismatch:\n got: %#v\nwant: %#v", got, want)
+	}
+	if got := result.BoolExpressionsCount(); got != 4 {
+		t.Errorf("BoolExpressionsCount() = %d, want 4", got)
+	}
+	if got := result.Percentage(); got != 25 {
+		t.Errorf("Percentage() = %d, want 25", got)
+	}
+}
+
 func TestAnalyserHandlesCommaOkLogicalConditions(t *testing.T) {
 	tests := []struct {
 		name            string

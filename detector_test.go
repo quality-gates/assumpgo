@@ -185,6 +185,42 @@ func TestScanIgnoresTypeAssertion(t *testing.T) {
 	}
 }
 
+func TestCommaOkLogicalNodeHandlesChainedConditions(t *testing.T) {
+	positive := []string{
+		"ok && a == 1 && b == 2",
+		"ok || a == 1 || b == 2",
+		"a == 1 && ok && b == 2",
+		"a == 1 && b == 2 && ok",
+		"ok && (a == 1 && b == 2)",
+		"(ok && a == 1) && b == 2",
+		"ok && ready() && a == 1",
+		"ok && a == 1 && b != 2",
+	}
+	for _, cond := range positive {
+		stmt := parseStmt(t, "if _, ok := x.(*int); "+cond+" {}")
+		ifCond := stmt.(*ast.IfStmt).Cond
+		if !isCommaOkLogicalNode(unwrap(ifCond), "ok") {
+			t.Errorf("expected %q to be recognized as a comma-ok logical node", cond)
+		}
+	}
+
+	// A different bare variable or a missing comparison must not be hidden by
+	// the comma-ok variable.
+	negative := []string{
+		"ok && ready && a == 1",
+		"ok && ready",
+		"ready && a == 1 && b == 2",
+		"ok && ready()",
+	}
+	for _, cond := range negative {
+		stmt := parseStmt(t, "if _, ok := x.(*int); "+cond+" {}")
+		ifCond := stmt.(*ast.IfStmt).Cond
+		if isCommaOkLogicalNode(unwrap(ifCond), "ok") {
+			t.Errorf("expected %q not to be recognized as a comma-ok logical node", cond)
+		}
+	}
+}
+
 func TestScanIgnoresCommaOkChannelReceive(t *testing.T) {
 	d := NewDetector()
 
