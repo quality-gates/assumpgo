@@ -116,27 +116,6 @@ func logicalMix(expr ast.Node) (hasVar, hasCmp bool) {
 	return false, false
 }
 
-// isPureVarLogicalChain reports whether expr is a `&&`/`||` expression built
-// entirely from bare variables, e.g. the `(x && y)` in `x && y && z`. Such a
-// chain contains no comparison, so combining it with another bare variable is
-// not the "variable mixed with a comparison" pattern the assumption rule
-// targets. Chains containing a literal (`x && true`), a call or a comparison
-// are not pure.
-func isPureVarLogicalChain(expr ast.Node) bool {
-	switch e := unwrap(expr).(type) {
-	case *ast.Ident:
-		return isVarIdent(e)
-	case *ast.BinaryExpr:
-		if e.Op != token.LAND && e.Op != token.LOR {
-			return false
-		}
-
-		return isPureVarLogicalChain(e.X) && isPureVarLogicalChain(e.Y)
-	}
-
-	return false
-}
-
 // isVarIdent reports whether expr is a bare identifier that refers to a
 // variable, excluding predeclared literals and resolved named constants (the
 // Go analog of PHP distinguishing a Variable from a ConstFetch).
@@ -155,11 +134,6 @@ func isVarIdent(expr ast.Node) bool {
 	}
 
 	return true
-}
-
-func isBinary(expr ast.Node) bool {
-	_, ok := expr.(*ast.BinaryExpr)
-	return ok
 }
 
 // unwrap strips redundant parentheses so `(x)` is treated like `x`.
@@ -214,17 +188,38 @@ func isCommaOkNotNode(node ast.Node, okName string) bool {
 }
 
 // isCommaOkLogicalNode reports whether node is a logical expression whose
-// variable-plus-binary assumption comes from the comma-ok ok variable.
+// variable-plus-binary assumption comes only from the comma-ok ok variable.
 func isCommaOkLogicalNode(node ast.Node, okName string) bool {
 	binary, ok := node.(*ast.BinaryExpr)
 	if !ok || (binary.Op != token.LAND && binary.Op != token.LOR) {
 		return false
 	}
 
-	left := unwrap(binary.X)
-	right := unwrap(binary.Y)
-	return (isNamedVar(left, okName) && isBinary(right) && !isPureVarLogicalChain(right)) ||
-		(isNamedVar(right, okName) && isBinary(left) && !isPureVarLogicalChain(left))
+	hasOk, hasOtherVar, hasBinary := commaOkLogicalMix(binary, okName)
+	return hasOk && hasBinary && !hasOtherVar
+}
+
+// commaOkLogicalMix classifies a logical expression without descending into
+// non-logical binary expressions. Identifiers inside comparisons are operands
+// of the assertion, not bare-variable conditions of their own.
+func commaOkLogicalMix(expr ast.Node, okName string) (hasOk, hasOtherVar, hasBinary bool) {
+	switch e := unwrap(expr).(type) {
+	case *ast.Ident:
+		if isNamedVar(e, okName) {
+			return true, false, false
+		}
+		return false, isVarIdent(e), false
+	case *ast.BinaryExpr:
+		if e.Op != token.LAND && e.Op != token.LOR {
+			return false, false, true
+		}
+
+		ok1, var1, binary1 := commaOkLogicalMix(e.X, okName)
+		ok2, var2, binary2 := commaOkLogicalMix(e.Y, okName)
+		return ok1 || ok2, var1 || var2, binary1 || binary2
+	}
+
+	return false, false, false
 }
 
 func isNamedVar(expr ast.Node, name string) bool {
