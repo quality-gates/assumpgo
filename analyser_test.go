@@ -449,13 +449,21 @@ func TestPercentageRounds(t *testing.T) {
 }
 
 func TestReadLine(t *testing.T) {
-	lines := []string{"  first  ", "second", "third"}
+	lines := []string{
+		"  first  ",
+		"second",
+		"third",
+		"\t\tif x != nil {\t// comment\t",
+		"\tvar a,\t\tb = 1, 2\t",
+	}
 	cases := map[int]string{
 		1: "first", // trimmed
 		2: "second",
 		3: "third",
-		0: "", // below range
-		4: "", // above range
+		4: "if x != nil { // comment", // trimmed and interior tab replaced with space
+		5: "var a,  b = 1, 2",         // trimmed and consecutive tabs replaced
+		0: "",                         // below range
+		6: "",                         // above range
 	}
 	for line, want := range cases {
 		if got := readLine(lines, line); got != want {
@@ -464,6 +472,31 @@ func TestReadLine(t *testing.T) {
 	}
 	if got := readLine(nil, 1); got != "" {
 		t.Errorf("readLine(nil, 1) = %q, want empty", got)
+	}
+}
+
+func TestAnalyserNormalizesInteriorTabs(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "tabs.go")
+	code := "package main\n\nfunc check(dog *int) bool {\n\tif dog != nil {\t// interior tab\n\t\treturn true\n\t}\n\treturn false\n}\n"
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("Analyse: %v", err)
+	}
+
+	if result.AssumptionsCount() != 1 {
+		t.Fatalf("expected 1 assumption, got %d", result.AssumptionsCount())
+	}
+
+	got := result.Assumptions()[0].Message
+	want := "if dog != nil { // interior tab"
+	if got != want {
+		t.Errorf("assumption message = %q, want %q", got, want)
 	}
 }
 
