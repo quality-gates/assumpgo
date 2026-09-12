@@ -2,6 +2,8 @@ package assumpgo
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -324,6 +326,61 @@ func TestPrettyOutputCombiningMarkAlignment(t *testing.T) {
 	wantWidth := len(tableLines[0])
 	for i, l := range tableLines {
 		if got := visualWidth(l); got != wantWidth {
+			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, l)
+		}
+	}
+}
+
+// TestPrettyOutputTabbedSourceLineAlignment guards the reported bug end to end:
+// a source line whose condition contains an interior tab must not shift its
+// row's pipes out of alignment. The whole path is exercised — the analyser
+// builds the message from the file, then PrettyOutput renders it — because the
+// alignment only holds if the message reaching the table is free of characters
+// whose column width the table cannot know.
+func TestPrettyOutputTabbedSourceLineAlignment(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "tabbed.go")
+	code := "package p\n\nfunc F(test bool, s []int) bool {\n\tif test &&\tlen(s) > 0 {\n\t\treturn true\n\t}\n\treturn false\n}\n"
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := NewAnalyser(NewDetector(), nil).Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+	if got := result.AssumptionsCount(); got != 1 {
+		t.Fatalf("AssumptionsCount() = %d, want 1; assumptions: %#v", got, result.Assumptions())
+	}
+
+	var buf bytes.Buffer
+	if err := (PrettyOutput{}).Output(&buf, result); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+
+	var tableLines []string
+	for _, l := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if l == "" {
+			break
+		}
+		tableLines = append(tableLines, l)
+	}
+	if len(tableLines) != 5 {
+		// 1 border + header + 1 separator + 1 row + 1 border
+		t.Fatalf("expected 5 table lines, got %d:\n%s", len(tableLines), out)
+	}
+
+	// Every line here is single-width ASCII, so counting runes is an
+	// independent measure of display width — no terminal renders a tab as
+	// zero columns, so a surviving tab would make the row line up here and
+	// not on screen. Assert it is gone as well as that the widths match.
+	if strings.ContainsRune(out, '\t') {
+		t.Errorf("output contains a tab, whose column width is not knowable:\n%q", out)
+	}
+	wantWidth := len([]rune(tableLines[0]))
+	for i, l := range tableLines {
+		if got := len([]rune(l)); got != wantWidth {
 			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, l)
 		}
 	}
