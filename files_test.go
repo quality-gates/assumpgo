@@ -533,3 +533,81 @@ func TestCollectTargetsDeduplicatesAbsoluteAndRelative(t *testing.T) {
 		t.Errorf("CollectTargets = %v, want [%q]", got, absDog)
 	}
 }
+
+func TestCollectTargetsDeduplicatesFilesystemAliases(t *testing.T) {
+	dir := t.TempDir()
+	victim := filepath.Join(dir, "victim.go")
+	symlink := filepath.Join(dir, "symlink.go")
+	hardlink := filepath.Join(dir, "hardlink.go")
+
+	if err := os.WriteFile(victim, []byte("package victim\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Base(victim), symlink); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(victim, hardlink); err != nil {
+		t.Fatal(err)
+	}
+
+	// Explicit targets with victim first.
+	got, err := CollectTargets([]string{victim, symlink, hardlink})
+	if err != nil {
+		t.Fatalf("CollectTargets: %v", err)
+	}
+	if len(got) != 1 || got[0] != victim {
+		t.Errorf("CollectTargets = %v, want [%q]", got, victim)
+	}
+
+	// Reversed order keeps the first spelling given (symlink).
+	got, err = CollectTargets([]string{symlink, victim, hardlink})
+	if err != nil {
+		t.Fatalf("CollectTargets: %v", err)
+	}
+	if len(got) != 1 || got[0] != symlink {
+		t.Errorf("CollectTargets = %v, want [%q]", got, symlink)
+	}
+
+	// Hard link first.
+	got, err = CollectTargets([]string{hardlink, victim, symlink})
+	if err != nil {
+		t.Fatalf("CollectTargets: %v", err)
+	}
+	if len(got) != 1 || got[0] != hardlink {
+		t.Errorf("CollectTargets = %v, want [%q]", got, hardlink)
+	}
+
+	// Scanned directory containing aliases collapses to one target.
+	got, err = CollectTargets([]string{dir})
+	if err != nil {
+		t.Fatalf("CollectTargets: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("CollectTargets on directory with aliases = %v, want 1 file", got)
+	}
+}
+
+func TestCollectFromListDeduplicatesFilesystemAliases(t *testing.T) {
+	dir := t.TempDir()
+	victim := filepath.Join(dir, "victim.go")
+	symlink := filepath.Join(dir, "symlink.go")
+	hardlink := filepath.Join(dir, "hardlink.go")
+
+	if err := os.WriteFile(victim, []byte("package victim\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Base(victim), symlink); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(victim, hardlink); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := CollectFromList(victim + " , " + symlink + " , " + hardlink)
+	if err != nil {
+		t.Fatalf("CollectFromList: %v", err)
+	}
+	if len(got) != 1 || got[0] != victim {
+		t.Errorf("CollectFromList = %v, want [%q]", got, victim)
+	}
+}

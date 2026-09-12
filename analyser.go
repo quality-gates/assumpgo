@@ -85,6 +85,7 @@ func NewAnalyser(detector *Detector, excludes []string) *Analyser {
 func (a *Analyser) Analyse(files []string) (*Result, error) {
 	result := &Result{}
 	consts := newConstIndex()
+	var analysed []os.FileInfo
 
 	for _, file := range files {
 		clean := filepath.Clean(file)
@@ -92,8 +93,18 @@ func (a *Analyser) Analyse(files []string) (*Result, error) {
 			continue
 		}
 
+		info, err := os.Stat(clean)
+		if err == nil {
+			if containsSameFile(analysed, info) {
+				continue
+			}
+		}
+
 		if err := a.analyseFile(clean, result, consts); err != nil {
 			return nil, err
+		}
+		if err == nil {
+			analysed = append(analysed, info)
 		}
 	}
 

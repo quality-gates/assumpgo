@@ -575,3 +575,68 @@ func TestAcceptedFormats(t *testing.T) {
 		})
 	}
 }
+
+func TestMultipleTargetsDeduplicatesFilesystemAliases(t *testing.T) {
+	dir := t.TempDir()
+	victim := filepath.Join(dir, "victim.go")
+	writeSource(t, victim)
+
+	symlink := filepath.Join(dir, "symlink.go")
+	if err := os.Symlink(filepath.Base(victim), symlink); err != nil {
+		t.Fatal(err)
+	}
+	hardlink := filepath.Join(dir, "hardlink.go")
+	if err := os.Link(victim, hardlink); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("explicit alias targets", func(t *testing.T) {
+		stdout, _, code := runCapture(t, victim, symlink, hardlink)
+		if code != exitAssumption {
+			t.Fatalf("exit = %d, want %d", code, exitAssumption)
+		}
+		if !strings.Contains(stdout, "1 out of 2 boolean expressions are assumptions (50%)") {
+			t.Errorf("expected deduplicated summary of 1 expression, got:\n%s", stdout)
+		}
+	})
+
+	t.Run("scanned directory containing aliases", func(t *testing.T) {
+		stdout, _, code := runCapture(t, dir)
+		if code != exitAssumption {
+			t.Fatalf("exit = %d, want %d", code, exitAssumption)
+		}
+		if !strings.Contains(stdout, "1 out of 2 boolean expressions are assumptions (50%)") {
+			t.Errorf("expected deduplicated summary of 1 expression, got:\n%s", stdout)
+		}
+	})
+
+	t.Run("exclude canonical excludes directory aliases", func(t *testing.T) {
+		stdout, _, code := runCapture(t, "-exclude", victim, dir)
+		if code != exitOK {
+			t.Fatalf("exit = %d, want %d", code, exitOK)
+		}
+		if !strings.Contains(stdout, "0 out of 0 boolean expressions are assumptions (0%)") {
+			t.Errorf("expected 0 expressions, got:\n%s", stdout)
+		}
+	})
+
+	t.Run("exclude symlink excludes direct canonical target", func(t *testing.T) {
+		stdout, _, code := runCapture(t, "-exclude", symlink, victim)
+		if code != exitOK {
+			t.Fatalf("exit = %d, want %d", code, exitOK)
+		}
+		if !strings.Contains(stdout, "0 out of 0 boolean expressions are assumptions (0%)") {
+			t.Errorf("expected 0 expressions, got:\n%s", stdout)
+		}
+	})
+
+	t.Run("exclude hard link excludes direct canonical target", func(t *testing.T) {
+		stdout, _, code := runCapture(t, "-exclude", hardlink, victim)
+		if code != exitOK {
+			t.Fatalf("exit = %d, want %d", code, exitOK)
+		}
+		if !strings.Contains(stdout, "0 out of 0 boolean expressions are assumptions (0%)") {
+			t.Errorf("expected 0 expressions, got:\n%s", stdout)
+		}
+	})
+}

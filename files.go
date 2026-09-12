@@ -86,6 +86,7 @@ func walkGoFiles(path string, visited []os.FileInfo, paths *[]string) error {
 // Non-existent paths are ignored.
 func CollectFromList(list string) ([]string, error) {
 	var paths []string
+	var infos []os.FileInfo
 	seen := make(map[string]bool)
 	for _, item := range strings.Split(list, ",") {
 		item = strings.TrimSpace(item)
@@ -101,10 +102,26 @@ func CollectFromList(list string) ([]string, error) {
 		}
 		for _, p := range found {
 			clean := filepath.Clean(p)
-			if !seen[clean] {
-				seen[clean] = true
-				paths = append(paths, clean)
+			identity := identityPath(clean)
+			if seen[identity] {
+				continue
 			}
+
+			info, err := os.Stat(clean)
+			if err != nil {
+				seen[identity] = true
+				paths = append(paths, clean)
+				continue
+			}
+
+			if containsSameFile(infos, info) {
+				seen[identity] = true
+				continue
+			}
+
+			seen[identity] = true
+			paths = append(paths, clean)
+			infos = append(infos, info)
 		}
 	}
 
@@ -112,11 +129,12 @@ func CollectFromList(list string) ([]string, error) {
 }
 
 // CollectTargets expands a slice of target paths into a deduplicated list
-// of .go files. Deduplication compares absolute forms, so relative and
-// absolute spellings of the same file collapse to one entry; the first
-// spelling given is the one kept.
+// of .go files. Deduplication compares absolute forms and filesystem identity,
+// so relative, absolute, symlink, and hard-link spellings of the same file
+// collapse to one entry; the first spelling given is the one kept.
 func CollectTargets(targets []string) ([]string, error) {
 	var paths []string
+	var infos []os.FileInfo
 	seen := make(map[string]bool)
 	for _, target := range targets {
 		found, err := CollectGoFiles(target)
@@ -126,14 +144,38 @@ func CollectTargets(targets []string) ([]string, error) {
 		for _, p := range found {
 			clean := filepath.Clean(p)
 			identity := identityPath(clean)
-			if !seen[identity] {
+			if seen[identity] {
+				continue
+			}
+
+			info, err := os.Stat(clean)
+			if err != nil {
 				seen[identity] = true
 				paths = append(paths, clean)
+				continue
 			}
+
+			if containsSameFile(infos, info) {
+				seen[identity] = true
+				continue
+			}
+
+			seen[identity] = true
+			paths = append(paths, clean)
+			infos = append(infos, info)
 		}
 	}
 
 	return paths, nil
+}
+
+func containsSameFile(infos []os.FileInfo, info os.FileInfo) bool {
+	for _, seen := range infos {
+		if os.SameFile(seen, info) {
+			return true
+		}
+	}
+	return false
 }
 
 // ContainsPath reports whether path matches any of paths, comparing absolute

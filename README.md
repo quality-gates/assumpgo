@@ -54,8 +54,9 @@ assumpgo -format xml -exclude vendor,generated ./...
 ```
 
 Directory symlinks are followed for targets and exclusions, including links
-found inside a walked tree; cyclic links are visited only once. Symlinks to
-individual files are supported too.
+found inside a walked tree; cyclic links are visited only once. Symlinks and hard
+links to individual files are supported too, and aliases of the same file are
+deduplicated so each underlying file is analysed once.
 
 There is no ruleset file: the analyzer’s pattern set is fixed. See
 [docs/usage.md](docs/usage.md) for what counts as an assumption.

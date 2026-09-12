@@ -9,6 +9,8 @@ assumpgo -version
 ```
 
 `<path>...` is one or more `.go` files or directories (walked recursively).
+Multiple paths that are symlinks or hard links pointing to the same underlying
+file are deduplicated and analysed once.
 
 `-format` / `-f` accepts exactly `pretty` (the default human table) or `xml`
 (checkstyle). Values are case-sensitive and lowercase-only: `-format XML`,
