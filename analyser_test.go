@@ -467,6 +467,37 @@ func TestReadLine(t *testing.T) {
 	}
 }
 
+// TestReadLineReplacesInteriorControlCharacters guards the reported bug: a
+// control character surviving into a message has no fixed column width in a
+// terminal, so the pretty table's padding no longer matches what is rendered.
+// Each one becomes exactly one space, which is one column everywhere.
+func TestReadLineReplacesInteriorControlCharacters(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"tab", "if test &&\tlen(s) > 0 {", "if test && len(s) > 0 {"},
+		{"two tabs", "a\t\tb", "a  b"},
+		{"vertical tab", "a\vb", "a b"},
+		{"form feed", "a\fb", "a b"},
+		{"backspace", "a\bb", "a b"},
+		{"interior carriage return", "a\rb", "a b"},
+		// Near-miss: an ordinary line must come back untouched.
+		{"no control characters", "if x != nil {", "if x != nil {"},
+		// Near-miss: a multibyte non-control rune must survive as itself.
+		{"multibyte", "if x != nil { // é 日", "if x != nil { // é 日"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := readLine([]string{tc.input}, 1); got != tc.want {
+				t.Errorf("readLine(%q, 1) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestAnalyseReturnsErrorForMissingFile(t *testing.T) {
 	analyser := NewAnalyser(NewDetector(), nil)
 	if _, err := analyser.Analyse([]string{"does-not-exist.go"}); err == nil {

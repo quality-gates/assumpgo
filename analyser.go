@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 )
 
 // Assumption is a single weak boolean check found in the analysed source.
@@ -194,12 +195,23 @@ func markCommaOkConditionNodes(init ast.Stmt, cond ast.Expr, ignored, ignoredAss
 	})
 }
 
+// readLine returns the source line as an assumption message: trimmed of
+// surrounding whitespace, with every interior control character (most often a
+// tab used to align code) replaced by a single space. A control character has
+// no fixed column width — a terminal renders a tab as at least one column,
+// while the table's width arithmetic cannot know how many — so leaving one in
+// the message would push the pretty table's dividers out of alignment.
 func readLine(lines []string, line int) string {
 	if line < 1 || line > len(lines) {
 		return ""
 	}
 
-	return strings.TrimSpace(lines[line-1])
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, strings.TrimSpace(lines[line-1]))
 }
 
 // constIndex caches the package-level constant names declared in a directory,
