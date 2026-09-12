@@ -103,6 +103,23 @@ func writeTable(w io.Writer, assumptions []Assumption) error {
 	return err
 }
 
+// wideRanges are the East Asian Wide / Fullwidth code point ranges, listed
+// individually rather than as the single span 0x2e80..0xffef they replace:
+// that span also swallowed narrow blocks such as Alphabetic Presentation Forms
+// (Latin ligatures like \ufb01) and the Halfwidth Forms at 0xff61..0xffdc,
+// which are one column each.
+var wideRanges = [...]struct{ lo, hi rune }{
+	{0x1100, 0x11ff},    // Hangul Jamo
+	{0x2600, 0x27bf},    // Misc Symbols and Dingbats
+	{0x2e80, 0xa4cf},    // CJK radicals through Yi
+	{0xac00, 0xd7af},    // Hangul syllables
+	{0xf900, 0xfaff},    // CJK compatibility ideographs
+	{0xfe10, 0xfe4f},    // vertical and CJK compatibility forms
+	{0xff01, 0xff60},    // fullwidth ASCII forms
+	{0xffe0, 0xffee},    // fullwidth signs
+	{0x1f000, 0x10ffff}, // emoji and symbol planes
+}
+
 func runeWidth(r rune) int {
 	if r < 32 || (r >= 0x7f && r < 0xa0) {
 		return 0
@@ -112,11 +129,10 @@ func runeWidth(r rune) int {
 	if unicode.In(r, unicode.Mn, unicode.Me) {
 		return 0
 	}
-	if (r >= 0x1100 && r <= 0x11ff) ||
-		(r >= 0x2600 && r <= 0x27bf) ||
-		(r >= 0x2e80 && r <= 0xffef) ||
-		r >= 0x1f000 {
-		return 2
+	for _, wr := range wideRanges {
+		if r >= wr.lo && r <= wr.hi {
+			return 2
+		}
 	}
 	return 1
 }

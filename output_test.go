@@ -260,7 +260,31 @@ func TestRuneWidth(t *testing.T) {
 		{0x2e7f, 1},
 		{0x2e80, 2},
 		{'日', 2},
-		{0xffef, 2},
+		{0xa4cf, 2},
+		{0xa4d0, 1}, // Lisu is narrow
+		{0xabff, 1},
+		{0xac00, 2}, // Hangul syllables
+		{0xd7af, 2},
+		{0xd7b0, 1},
+		{0xf8ff, 1}, // private use is narrow
+		{0xf900, 2}, // CJK compatibility ideographs
+		{0xfaff, 2},
+
+		// Alphabetic Presentation Forms: Latin ligatures are one column
+		{0xfb00, 1}, // ﬀ
+		{'ﬁ', 1},
+		{0xfb4f, 1},
+
+		// Halfwidth and Fullwidth Forms: only the fullwidth halves are 2
+		{0xff00, 1},
+		{0xff01, 2}, // fullwidth exclamation mark
+		{0xff60, 2},
+		{0xff61, 1}, // halfwidth ideographic full stop
+		{'ｶ', 1},    // halfwidth Katakana
+		{0xffdc, 1},
+		{0xffe0, 2}, // fullwidth cent sign
+		{0xffee, 2},
+		{0xffef, 1}, // unassigned, beyond the fullwidth signs
 		{0xfff0, 1},
 
 		// Emojis (SMP >= 0x1f000)
@@ -349,11 +373,63 @@ func TestStringWidth(t *testing.T) {
 		{"ą", 1},
 		{"x̨́", 1}, // multiple stacked marks stay one column
 		{"é", 1},   // precomposed U+00E9 is a single width-1 rune
+
+		// Halfwidth Katakana and Latin ligatures are one column each, unlike
+		// their fullwidth counterparts.
+		{"ｶﾀｶﾅ", 4},
+		{"カタカナ", 8},
+		{"find ﬁle", 8},
 	}
 
 	for _, tt := range tests {
 		if got := stringWidth(tt.input); got != tt.want {
 			t.Errorf("stringWidth(%q) = %d, want %d", tt.input, got, tt.want)
+		}
+	}
+}
+
+// TestPrettyOutputHalfwidthAlignment guards the reported bug: halfwidth
+// Katakana (U+FF61-U+FFDC) and Latin ligatures (U+FB00-U+FB4F) each occupy one
+// terminal column, so a message containing them must not shift its row's pipes
+// out of alignment. Like TestPrettyOutputCombiningMarkAlignment, the check
+// measures display width independently of stringWidth, the code under test.
+func TestPrettyOutputHalfwidthAlignment(t *testing.T) {
+	r := resultWith(
+		Assumption{File: "katakana.go", Line: 4, Message: "if dog != nil { // ｶﾀｶﾅ"},
+		Assumption{File: "ligature.go", Line: 7, Message: "if dog != nil { // find ﬁle"},
+		Assumption{File: "plain.go", Line: 9, Message: "if value != nil { // pure ascii message longer"},
+	)
+
+	var buf bytes.Buffer
+	if err := (PrettyOutput{}).Output(&buf, r); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	var tableLines []string
+	for _, l := range lines {
+		if l == "" {
+			break
+		}
+		tableLines = append(tableLines, l)
+	}
+	if len(tableLines) != 7 {
+		// 1 border + header + 1 separator + 3 rows + 1 border
+		t.Fatalf("expected 7 table lines, got %d:\n%s", len(tableLines), out)
+	}
+
+	// Every rune in this input is exactly one terminal column, so the rune
+	// count is the display width.
+	visualWidth := func(s string) int {
+		return len([]rune(s))
+	}
+
+	// The border is pure ASCII, so its byte length is its display width.
+	wantWidth := len(tableLines[0])
+	for i, l := range tableLines {
+		if got := visualWidth(l); got != wantWidth {
+			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, l)
 		}
 	}
 }
