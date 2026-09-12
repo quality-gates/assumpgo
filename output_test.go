@@ -227,6 +227,9 @@ func TestRuneWidth(t *testing.T) {
 		{0x80, 0},
 		{0x9f, 0},
 
+		// Horizontal tab is width 1
+		{'\t', 1},
+
 		// Nonspacing and enclosing combining marks are zero columns
 		{0x0301, 0}, // combining acute accent
 		{0x0328, 0}, // combining ogonek (Mn)
@@ -379,6 +382,10 @@ func TestStringWidth(t *testing.T) {
 		{"ｶﾀｶﾅ", 4},
 		{"カタカナ", 8},
 		{"find ﬁle", 8},
+
+		// Horizontal tabs occupy 1 column
+		{"\t", 1},
+		{"hello\tworld", 11},
 	}
 
 	for _, tt := range tests {
@@ -432,4 +439,81 @@ func TestPrettyOutputHalfwidthAlignment(t *testing.T) {
 			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, l)
 		}
 	}
+}
+
+func tablePipePositions(line string) []int {
+	var positions []int
+	for col, r := range line {
+		if r == '|' {
+			positions = append(positions, col)
+		}
+	}
+	return positions
+}
+
+func assertPipesAlign(t *testing.T, tableLines []string) {
+	t.Helper()
+	var expected []int
+	for i, l := range tableLines {
+		if strings.HasPrefix(l, "-") || strings.HasPrefix(l, "=") {
+			continue
+		}
+		pipes := tablePipePositions(l)
+		if expected == nil {
+			expected = pipes
+			continue
+		}
+		if len(pipes) != len(expected) {
+			t.Fatalf("line %d pipe count = %d, want %d", i, len(pipes), len(expected))
+		}
+		for pIdx, pos := range pipes {
+			if pos != expected[pIdx] {
+				t.Errorf("line %d pipe %d position = %d, want %d", i, pIdx, pos, expected[pIdx])
+			}
+		}
+	}
+}
+
+// TestPrettyOutputInteriorTabAlignment guards the reported bug: an assumption
+// message containing interior tab characters must not cause the printed table
+// row width to exceed the table border width, and column dividers must remain
+// aligned without emitting unexpanded tabs into pretty table output.
+func TestPrettyOutputInteriorTabAlignment(t *testing.T) {
+	r := resultWith(
+		Assumption{File: "tab.go", Line: 4, Message: "if dog != nil {\t// tab comment"},
+		Assumption{File: "multi.go", Line: 12, Message: "if cat != nil {\t\t// double tab"},
+		Assumption{File: "plain.go", Line: 9, Message: "if value != nil { // pure ascii message longer"},
+	)
+
+	var buf bytes.Buffer
+	if err := (PrettyOutput{}).Output(&buf, r); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	var tableLines []string
+	for _, l := range lines {
+		if l == "" {
+			break
+		}
+		tableLines = append(tableLines, l)
+	}
+	if len(tableLines) != 7 {
+		// 1 border + header + 1 separator + 3 rows + 1 border
+		t.Fatalf("expected 7 table lines, got %d:\n%s", len(tableLines), out)
+	}
+
+	if strings.Contains(out, "\t") {
+		t.Errorf("pretty output should not contain unexpanded tab characters:\n%q", out)
+	}
+
+	wantWidth := len(tableLines[0])
+	for i, l := range tableLines {
+		if len(l) != wantWidth {
+			t.Errorf("table line %d width = %d, want %d:\n%q", i, len(l), wantWidth, l)
+		}
+	}
+
+	assertPipesAlign(t, tableLines)
 }

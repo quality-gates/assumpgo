@@ -210,7 +210,7 @@ func readLine(lines []string, line int) string {
 		return ""
 	}
 
-	return strings.TrimSpace(lines[line-1])
+	return strings.ReplaceAll(strings.TrimSpace(lines[line-1]), "\t", " ")
 }
 
 // constIndex caches the package-level constant names declared in a directory,

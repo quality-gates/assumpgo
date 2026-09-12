@@ -43,7 +43,11 @@ func writeTable(w io.Writer, assumptions []Assumption) error {
 	headers := []string{"file", "line", "message"}
 	rows := make([][]string, 0, len(assumptions))
 	for _, a := range assumptions {
-		rows = append(rows, []string{a.File, fmt.Sprintf("%d", a.Line), a.Message})
+		rows = append(rows, []string{
+			strings.ReplaceAll(a.File, "\t", " "),
+			fmt.Sprintf("%d", a.Line),
+			strings.ReplaceAll(a.Message, "\t", " "),
+		})
 	}
 
 	widths := make([]int, len(headers))
@@ -121,6 +125,9 @@ var wideRanges = [...]struct{ lo, hi rune }{
 }
 
 func runeWidth(r rune) int {
+	if r == '\t' {
+		return 1
+	}
 	if r < 32 || (r >= 0x7f && r < 0xa0) {
 		return 0
 	}
@@ -138,8 +145,8 @@ func runeWidth(r rune) int {
 }
 
 // stringWidth calculates the monospace visual display width of a string.
-// Printable ASCII characters have width 1. Control, non-printable, and
-// combining characters have width 0.
+// Horizontal tabs and printable ASCII characters have width 1. Control,
+// non-printable, and combining characters have width 0.
 // East Asian Wide / Fullwidth characters and common emojis have width 2.
 func stringWidth(s string) int {
 	w := 0
