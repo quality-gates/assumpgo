@@ -53,6 +53,10 @@ other accepted value is lowercase `pretty`, the default):
 assumpgo -format xml -exclude vendor,generated ./...
 ```
 
+Directory symlinks are followed for targets and exclusions, including links
+found inside a walked tree; cyclic links are visited only once. Symlinks to
+individual files are supported too.
+
 There is no ruleset file: the analyzer’s pattern set is fixed. See
 [docs/usage.md](docs/usage.md) for what counts as an assumption.
 
