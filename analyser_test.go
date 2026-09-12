@@ -1283,3 +1283,114 @@ func check() bool {
 		t.Errorf("AssumptionsCount() = %d, want 1; assumptions: %#v", got, result.Assumptions())
 	}
 }
+
+func TestAnalyserHonoursHardLinkExclude(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "assumption.go")
+	code := "package target\n\nfunc check(value *int) {\n\tif value != nil {\n\t}\n}\n"
+	if err := os.WriteFile(file, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "hardlink.go")
+	if err := os.Link(file, link); err != nil {
+		t.Fatal(err)
+	}
+
+	// Exclude hard link, target canonical file.
+	analyser := NewAnalyser(NewDetector(), []string{link})
+	result, err := analyser.Analyse([]string{file})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+	if got := result.AssumptionsCount(); got != 0 {
+		t.Errorf("file %q was not excluded by hard link %q (got %d assumptions, want 0)", file, link, got)
+	}
+}
+
+func TestAnalyserHonoursFileSymlinkExclude(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "assumption.go")
+	code := "package target\n\nfunc check(value *int) {\n\tif value != nil {\n\t}\n}\n"
+	if err := os.WriteFile(file, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "symlink.go")
+	if err := os.Symlink(filepath.Base(file), link); err != nil {
+		t.Fatal(err)
+	}
+
+	// Exclude symlink, target canonical file.
+	analyser := NewAnalyser(NewDetector(), []string{link})
+	result, err := analyser.Analyse([]string{file})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+	if got := result.AssumptionsCount(); got != 0 {
+		t.Errorf("file %q was not excluded by symlink %q (got %d assumptions, want 0)", file, link, got)
+	}
+}
+
+func TestAnalyserHonoursExcludeForSymlinkAndHardLinkTargets(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "assumption.go")
+	code := "package target\n\nfunc check(value *int) {\n\tif value != nil {\n\t}\n}\n"
+	if err := os.WriteFile(file, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	symlink := filepath.Join(root, "symlink.go")
+	if err := os.Symlink(filepath.Base(file), symlink); err != nil {
+		t.Fatal(err)
+	}
+	hardlink := filepath.Join(root, "hardlink.go")
+	if err := os.Link(file, hardlink); err != nil {
+		t.Fatal(err)
+	}
+
+	// Exclude canonical file, target symlink.
+	analyser := NewAnalyser(NewDetector(), []string{file})
+	result, err := analyser.Analyse([]string{symlink})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+	if got := result.AssumptionsCount(); got != 0 {
+		t.Errorf("symlink target %q was not excluded by canonical %q (got %d assumptions, want 0)", symlink, file, got)
+	}
+
+	// Exclude canonical file, target hard link.
+	result, err = analyser.Analyse([]string{hardlink})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+	if got := result.AssumptionsCount(); got != 0 {
+		t.Errorf("hardlink target %q was not excluded by canonical %q (got %d assumptions, want 0)", hardlink, file, got)
+	}
+}
+
+func TestAnalyserDeduplicatesAliasedFiles(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "assumption.go")
+	code := "package target\n\nfunc check(value *int) bool {\n\tif value != nil {\n\t\treturn true\n\t}\n\treturn false\n}\n"
+	if err := os.WriteFile(file, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	symlink := filepath.Join(root, "symlink.go")
+	if err := os.Symlink(filepath.Base(file), symlink); err != nil {
+		t.Fatal(err)
+	}
+	hardlink := filepath.Join(root, "hardlink.go")
+	if err := os.Link(file, hardlink); err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{file, symlink, hardlink})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+	if got := result.AssumptionsCount(); got != 1 {
+		t.Errorf("AssumptionsCount() = %d, want 1; assumptions: %#v", got, result.Assumptions())
+	}
+	if got := result.BoolExpressionsCount(); got != 2 {
+		t.Errorf("BoolExpressionsCount() = %d, want 2", got)
+	}
+}
