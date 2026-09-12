@@ -18,6 +18,26 @@ func TestCollectGoFilesSingleFile(t *testing.T) {
 	}
 }
 
+func TestCollectGoFilesSingleFileSymlink(t *testing.T) {
+	root := t.TempDir()
+	link := filepath.Join(root, "dog.go")
+	file, err := filepath.Abs(filepath.Join("testdata", "fixtures", "dog.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(file, link); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := CollectGoFiles(link)
+	if err != nil {
+		t.Fatalf("CollectGoFiles: %v", err)
+	}
+	if len(got) != 1 || got[0] != link {
+		t.Errorf("CollectGoFiles(%q) = %v, want [%q]", link, got, link)
+	}
+}
+
 func TestCollectGoFilesDirectory(t *testing.T) {
 	dir := filepath.Join("testdata", "fixtures")
 	got, err := CollectGoFiles(dir)
@@ -42,6 +62,94 @@ func TestCollectGoFilesDirectory(t *testing.T) {
 		if !seen {
 			t.Errorf("expected %q to be collected", p)
 		}
+	}
+}
+
+func TestCollectGoFilesFollowsDirectorySymlink(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "target")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(target, "keep.go")
+	if err := os.WriteFile(file, []byte("package target\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := CollectGoFiles(link)
+	if err != nil {
+		t.Fatalf("CollectGoFiles: %v", err)
+	}
+	want := filepath.Join(link, "keep.go")
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("CollectGoFiles(%q) = %v, want [%q]", link, got, want)
+	}
+}
+
+func TestCollectGoFilesFollowsNestedDirectorySymlink(t *testing.T) {
+	root := t.TempDir()
+	tree := filepath.Join(root, "tree")
+	target := filepath.Join(root, "target")
+	if err := os.Mkdir(tree, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	regular := filepath.Join(tree, "regular.go")
+	if err := os.WriteFile(regular, []byte("package tree\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(target, "nested.go")
+	if err := os.WriteFile(nested, []byte("package target\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(tree, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := CollectGoFiles(tree)
+	if err != nil {
+		t.Fatalf("CollectGoFiles: %v", err)
+	}
+	want := map[string]bool{
+		regular:                          false,
+		filepath.Join(link, "nested.go"): false,
+	}
+	for _, path := range got {
+		if _, ok := want[path]; ok {
+			want[path] = true
+		}
+	}
+	for path, seen := range want {
+		if !seen {
+			t.Errorf("expected %q to be collected; got %v", path, got)
+		}
+	}
+}
+
+func TestCollectGoFilesDoesNotRevisitCyclicDirectorySymlink(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "keep.go")
+	if err := os.WriteFile(file, []byte("package cycle\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loop := filepath.Join(dir, "loop")
+	if err := os.Symlink(dir, loop); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := CollectGoFiles(dir)
+	if err != nil {
+		t.Fatalf("CollectGoFiles: %v", err)
+	}
+	if len(got) != 1 || got[0] != file {
+		t.Errorf("CollectGoFiles(%q) = %v, want [%q]", dir, got, file)
 	}
 }
 
@@ -111,6 +219,31 @@ func TestCollectFromList(t *testing.T) {
 	}
 	if got[0] != cat || got[1] != dog {
 		t.Errorf("CollectFromList = %v, want [%q %q]", got, cat, dog)
+	}
+}
+
+func TestCollectFromListFollowsDirectorySymlink(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "target")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(target, "keep.go")
+	if err := os.WriteFile(file, []byte("package target\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := CollectFromList(link)
+	if err != nil {
+		t.Fatalf("CollectFromList: %v", err)
+	}
+	want := filepath.Join(link, "keep.go")
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("CollectFromList(%q) = %v, want [%q]", link, got, want)
 	}
 }
 

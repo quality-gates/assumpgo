@@ -135,6 +135,36 @@ func TestAnalyserHonoursExcludes(t *testing.T) {
 	}
 }
 
+func TestAnalyserHonoursSymlinkedDirectoryExclude(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "target")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(target, "assumption.go")
+	code := "package target\n\nfunc check(value *int) {\n\tif value != nil {\n\t}\n}\n"
+	if err := os.WriteFile(file, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	excludes, err := CollectFromList(link)
+	if err != nil {
+		t.Fatalf("CollectFromList: %v", err)
+	}
+	analyser := NewAnalyser(NewDetector(), excludes)
+	result, err := analyser.Analyse([]string{file})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+	if got := result.AssumptionsCount(); got != 0 {
+		t.Errorf("file %q was not excluded by symlink %q (got %d assumptions, want 0)", file, link, got)
+	}
+}
+
 func TestAnalyserHonoursExcludesPathSyntax(t *testing.T) {
 	rel := filepath.Join("testdata", "fixtures", "dog.go")
 	abs, err := filepath.Abs(rel)

@@ -2,7 +2,6 @@ package assumpgo
 
 import (
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,7 +10,8 @@ import (
 // CollectGoFiles returns the list of .go files reachable from fromPath,
 // cleaned using filepath.Clean. A trailing ... path component is treated as a
 // recursive pattern rooted at its containing directory. If fromPath is a
-// single file it is returned; if it is a directory it is walked recursively.
+// single file it is returned; if it is a directory it is walked recursively,
+// following directory symlinks without revisiting a directory.
 func CollectGoFiles(fromPath string) ([]string, error) {
 	pathToCollect := fromPath
 	cleanPattern := filepath.Clean(fromPath)
@@ -30,23 +30,55 @@ func CollectGoFiles(fromPath string) ([]string, error) {
 	}
 
 	var paths []string
-	err = filepath.WalkDir(cleanPath, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(path, ".go") {
-			paths = append(paths, filepath.Clean(path))
-		}
-		return nil
-	})
+	err = walkGoFiles(cleanPath, nil, &paths)
 	if err != nil {
 		return nil, err
 	}
 
 	return paths, nil
+}
+
+func walkGoFiles(path string, visited []os.FileInfo, paths *[]string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return nil
+	}
+
+	for _, seen := range visited {
+		if os.SameFile(seen, info) {
+			return nil
+		}
+	}
+	visited = append(visited, info)
+
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		child := filepath.Join(path, entry.Name())
+		childInfo, err := os.Stat(child)
+		if err != nil {
+			if entry.Type()&os.ModeSymlink != 0 {
+				continue
+			}
+			return err
+		}
+		if childInfo.IsDir() {
+			if err := walkGoFiles(child, visited, paths); err != nil {
+				return err
+			}
+			continue
+		}
+		if strings.HasSuffix(child, ".go") {
+			*paths = append(*paths, filepath.Clean(child))
+		}
+	}
+
+	return nil
 }
 
 // CollectFromList expands a comma separated list of files/directories into a

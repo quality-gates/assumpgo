@@ -88,7 +88,7 @@ func (a *Analyser) Analyse(files []string) (*Result, error) {
 
 	for _, file := range files {
 		clean := filepath.Clean(file)
-		if _, excluded := a.excludes[identityPath(file)]; excluded {
+		if a.isExcluded(clean) {
 			continue
 		}
 
@@ -98,6 +98,20 @@ func (a *Analyser) Analyse(files []string) (*Result, error) {
 	}
 
 	return result, nil
+}
+
+func (a *Analyser) isExcluded(path string) bool {
+	if _, excluded := a.excludes[identityPath(path)]; excluded {
+		return true
+	}
+
+	for exclude := range a.excludes {
+		if sameFile(exclude, path) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (a *Analyser) analyseFile(path string, result *Result, consts *constIndex) error {
