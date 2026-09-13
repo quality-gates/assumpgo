@@ -12,7 +12,7 @@ import (
 	assumpgo "github.com/quality-gates/assumpgo"
 )
 
-const version = "0.1.4"
+const version = "0.1.5"
 
 const (
 	exitOK         = 0
