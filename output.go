@@ -131,9 +131,9 @@ func runeWidth(r rune) int {
 	if r < 32 || (r >= 0x7f && r < 0xa0) {
 		return 0
 	}
-	// Nonspacing and enclosing combining marks render inside the previous
-	// character's cell, so they occupy zero terminal columns.
-	if unicode.In(r, unicode.Mn, unicode.Me) {
+	// Combining marks and format characters (zero-width space, BOM) occupy
+	// zero terminal columns.
+	if unicode.In(r, unicode.Mn, unicode.Me, unicode.Cf) {
 		return 0
 	}
 	for _, wr := range wideRanges {
@@ -146,7 +146,7 @@ func runeWidth(r rune) int {
 
 // stringWidth calculates the monospace visual display width of a string.
 // Horizontal tabs and printable ASCII characters have width 1. Control,
-// non-printable, and combining characters have width 0.
+// non-printable, combining, and format characters have width 0.
 // East Asian Wide / Fullwidth characters and common emojis have width 2.
 func stringWidth(s string) int {
 	w := 0
