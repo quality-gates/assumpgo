@@ -236,6 +236,17 @@ func TestRuneWidth(t *testing.T) {
 		{0x20dd, 0}, // combining enclosing circle (Me)
 		{0x05d0, 1}, // Hebrew letter: not a combining mark
 
+		// Format characters (unicode.Cf) occupy zero terminal columns
+		{0x200b, 0}, // zero-width space
+		{0x200c, 0}, // zero-width non-joiner
+		{0x200d, 0}, // zero-width joiner
+		{0x200e, 0}, // left-to-right mark
+		{0x200f, 0}, // right-to-left mark
+		{0x2060, 0}, // word joiner
+		{0xfeff, 0}, // zero-width no-break space / BOM
+		{0x2000, 1}, // en quad: space separator, not a format character
+		{0x2010, 1}, // hyphen: punctuation, not a format character
+
 		// Printable ASCII
 		{32, 1},
 		{'a', 1},
@@ -377,6 +388,11 @@ func TestStringWidth(t *testing.T) {
 		{"x̨́", 1}, // multiple stacked marks stay one column
 		{"é", 1},   // precomposed U+00E9 is a single width-1 rune
 
+		// Format characters occupy zero columns: "a" + U+200B + "b" is two.
+		{"a\u200bb", 2},
+		{"\ufeffhello", 5},
+		{"\u200eok\u200f", 2},
+
 		// Halfwidth Katakana and Latin ligatures are one column each, unlike
 		// their fullwidth counterparts.
 		{"ｶﾀｶﾅ", 4},
@@ -516,4 +532,57 @@ func TestPrettyOutputInteriorTabAlignment(t *testing.T) {
 	}
 
 	assertPipesAlign(t, tableLines)
+}
+
+// TestPrettyOutputZeroWidthFormatAlignment guards the reported bug: a message
+// containing a format character (U+200B zero-width space, U+FEFF BOM) occupies
+// zero terminal columns, so the row must not shift its pipes out of alignment.
+// Like TestPrettyOutputCombiningMarkAlignment, the check measures display
+// width independently of stringWidth, the code under test.
+func TestPrettyOutputZeroWidthFormatAlignment(t *testing.T) {
+	r := resultWith(
+		Assumption{File: "zwsp.go", Line: 4, Message: "if dog != nil { // \u200b"},
+		Assumption{File: "bom.go", Line: 6, Message: "if cat != nil { // \ufeffascii"},
+		Assumption{File: "plain.go", Line: 9, Message: "if value != nil { // pure ascii message longer"},
+	)
+
+	var buf bytes.Buffer
+	if err := (PrettyOutput{}).Output(&buf, r); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	var tableLines []string
+	for _, l := range lines {
+		if l == "" {
+			break
+		}
+		tableLines = append(tableLines, l)
+	}
+	if len(tableLines) != 7 {
+		// 1 border + header + 1 separator + 3 rows + 1 border
+		t.Fatalf("expected 7 table lines, got %d:\n%s", len(tableLines), out)
+	}
+
+	// visualWidth counts terminal columns the way a terminal does for this
+	// input: every rune is one column except U+200B and U+FEFF, which are
+	// zero columns.
+	visualWidth := func(s string) int {
+		w := 0
+		for _, r := range s {
+			if r != 0x200b && r != 0xfeff {
+				w++
+			}
+		}
+		return w
+	}
+
+	// The border is pure ASCII, so its byte length is its display width.
+	wantWidth := len(tableLines[0])
+	for i, l := range tableLines {
+		if got := visualWidth(l); got != wantWidth {
+			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, l)
+		}
+	}
 }
