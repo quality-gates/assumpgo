@@ -439,6 +439,249 @@ func F(x, y int) {
 	}
 }
 
+// TestAnalyserDoesNotDuplicateChainedLogicalMixes is the regression for
+// issue #77: a mix is one assumption. Nested && / || nodes in the same
+// chain must not add extra findings when the comparison is on the left
+// or in the middle.
+func TestAnalyserDoesNotDuplicateChainedLogicalMixes(t *testing.T) {
+	tests := []struct {
+		name            string
+		code            string
+		wantAssumptions int
+		wantBoolExprs   int
+		wantPercentage  int
+		wantMessages    []string
+	}{
+		{
+			name: "comparison then vars",
+			code: `package p
+
+func F(n int, x, y bool) {
+	if n == 1 && x && y {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantBoolExprs:   3,
+			wantPercentage:  33,
+			wantMessages:    []string{"if n == 1 && x && y {"},
+		},
+		{
+			name: "vars then comparison",
+			code: `package p
+
+func F(n int, x, y bool) {
+	if x && y && n == 1 {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantBoolExprs:   3,
+			wantPercentage:  33,
+			wantMessages:    []string{"if x && y && n == 1 {"},
+		},
+		{
+			name: "four operands comparison first",
+			code: `package p
+
+func F(n int, x, y, z bool) {
+	if n == 1 && x && y && z {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantBoolExprs:   4,
+			wantPercentage:  25,
+			wantMessages:    []string{"if n == 1 && x && y && z {"},
+		},
+		{
+			name: "four operands vars first",
+			code: `package p
+
+func F(n int, x, y, z bool) {
+	if x && y && z && n == 1 {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantBoolExprs:   4,
+			wantPercentage:  25,
+			wantMessages:    []string{"if x && y && z && n == 1 {"},
+		},
+		{
+			name: "var then several comparisons",
+			code: `package p
+
+func F(x bool, a, b, c int) {
+	if x && a == 1 && b == 2 && c == 3 {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantBoolExprs:   4,
+			wantPercentage:  25,
+			wantMessages:    []string{"if x && a == 1 && b == 2 && c == 3 {"},
+		},
+		{
+			name: "several comparisons then var",
+			code: `package p
+
+func F(x bool, a, b, c int) {
+	if a == 1 && b == 2 && c == 3 && x {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantBoolExprs:   4,
+			wantPercentage:  25,
+			wantMessages:    []string{"if a == 1 && b == 2 && c == 3 && x {"},
+		},
+		{
+			name: "parenthesized vars on the left",
+			code: `package p
+
+func F(n int, x, y bool) {
+	if (x && y) && n == 1 {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantBoolExprs:   3,
+			wantPercentage:  33,
+			wantMessages:    []string{"if (x && y) && n == 1 {"},
+		},
+		{
+			name: "parenthesized mix on the right",
+			code: `package p
+
+func F(n int, x, y bool) {
+	if x && (y && n == 1) {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantBoolExprs:   3,
+			wantPercentage:  33,
+			wantMessages:    []string{"if x && (y && n == 1) {"},
+		},
+		{
+			name: "or chain comparison first",
+			code: `package p
+
+func F(n int, x, y bool) {
+	if n == 1 || x || y {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantBoolExprs:   3,
+			wantPercentage:  33,
+			wantMessages:    []string{"if n == 1 || x || y {"},
+		},
+		{
+			name: "for comparison first",
+			code: `package p
+
+func F(n int, x, y bool) {
+	for n == 1 && x && y {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantBoolExprs:   3,
+			wantPercentage:  33,
+			wantMessages:    []string{"for n == 1 && x && y {"},
+		},
+		{
+			name: "operand order in one file",
+			code: `package p
+
+func F(n int, x, y, z bool) {
+	if n == 1 && x && y && z {
+	}
+	if x && y && z && n == 1 {
+	}
+}
+`,
+			wantAssumptions: 2,
+			wantBoolExprs:   8,
+			wantPercentage:  25,
+			wantMessages: []string{
+				"if n == 1 && x && y && z {",
+				"if x && y && z && n == 1 {",
+			},
+		},
+		{
+			name: "nested != is still a separate assumption",
+			code: `package p
+
+func F(x bool, y *int) {
+	if x && y != nil {
+	}
+}
+`,
+			wantAssumptions: 2,
+			wantBoolExprs:   3,
+			wantPercentage:  67,
+			wantMessages: []string{
+				"if x && y != nil {",
+				"if x && y != nil {",
+			},
+		},
+		{
+			name: "!= does not swallow a nested mix",
+			code: `package p
+
+func F(x, y bool, n int) {
+	if x != (y && n == 1) {
+	}
+}
+`,
+			wantAssumptions: 2,
+			wantBoolExprs:   3,
+			wantPercentage:  67,
+			wantMessages: []string{
+				"if x != (y && n == 1) {",
+				"if x != (y && n == 1) {",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "mix.go")
+			if err := os.WriteFile(src, []byte(tt.code), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			analyser := NewAnalyser(NewDetector(), nil)
+			result, err := analyser.Analyse([]string{src})
+			if err != nil {
+				t.Fatalf("analyse: %v", err)
+			}
+
+			if got := result.AssumptionsCount(); got != tt.wantAssumptions {
+				t.Errorf("AssumptionsCount() = %d, want %d; assumptions: %#v", got, tt.wantAssumptions, result.Assumptions())
+			}
+			if got := result.BoolExpressionsCount(); got != tt.wantBoolExprs {
+				t.Errorf("BoolExpressionsCount() = %d, want %d", got, tt.wantBoolExprs)
+			}
+			if got := result.Percentage(); got != tt.wantPercentage {
+				t.Errorf("Percentage() = %d, want %d", got, tt.wantPercentage)
+			}
+			if tt.wantAssumptions > 0 {
+				got := make([]string, 0, len(result.Assumptions()))
+				for _, a := range result.Assumptions() {
+					got = append(got, a.Message)
+				}
+				if !reflect.DeepEqual(got, tt.wantMessages) {
+					t.Errorf("messages = %#v, want %#v", got, tt.wantMessages)
+				}
+			}
+		})
+	}
+}
+
 func TestPercentageRounds(t *testing.T) {
 	r := &Result{boolExpressionsCount: 8}
 	r.addAssumption("a.go", 1, "x")

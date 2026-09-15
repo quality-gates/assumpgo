@@ -180,12 +180,33 @@ func (a *Analyser) analyseFile(path string, result *Result, consts *constIndex) 
 		if a.detector.Scan(node) {
 			line := fset.Position(node.Pos()).Line
 			result.addAssumption(path, line, readLine(lines, line))
+			markNestedLogicalAssumptions(node, ignoredAssumptions)
 		}
 
 		return true
 	})
 
 	return nil
+}
+
+// markNestedLogicalAssumptions ignores nested && / || nodes under a mix.
+// Record the chain as one assumption. Operand order does not change the
+// count (issue #77).
+func markNestedLogicalAssumptions(node ast.Node, ignoredAssumptions map[ast.Node]struct{}) {
+	binary, ok := node.(*ast.BinaryExpr)
+	if !ok || (binary.Op != token.LAND && binary.Op != token.LOR) {
+		return
+	}
+
+	mark := func(n ast.Node) bool {
+		inner, ok := n.(*ast.BinaryExpr)
+		if ok && (inner.Op == token.LAND || inner.Op == token.LOR) {
+			ignoredAssumptions[n] = struct{}{}
+		}
+		return true
+	}
+	ast.Inspect(binary.X, mark)
+	ast.Inspect(binary.Y, mark)
 }
 
 func markCommaOkConditionNodes(init ast.Stmt, cond ast.Expr, ignored, ignoredAssumptions map[ast.Node]struct{}) {
