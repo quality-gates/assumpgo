@@ -1670,3 +1670,188 @@ func TestAnalyserDeduplicatesAliasedFiles(t *testing.T) {
 		t.Errorf("BoolExpressionsCount() = %d, want 2", got)
 	}
 }
+
+func TestAnalyserDetectsAssumptionsInCallArgumentsAndClosures(t *testing.T) {
+	tests := []struct {
+		name            string
+		code            string
+		wantAssumptions int
+		wantBoolExprs   int
+		wantPercentage  int
+		wantMessages    []string
+	}{
+		{
+			name: "call argument in mix condition",
+			code: `package main
+
+func check(b bool) bool { return b }
+
+func F(x bool, a int, y bool, n int) {
+	if x && a == 1 && check(y && n == 2) {
+	}
+}
+`,
+			wantAssumptions: 2,
+			wantBoolExprs:   4,
+			wantPercentage:  50,
+			wantMessages: []string{
+				"if x && a == 1 && check(y && n == 2) {",
+				"if x && a == 1 && check(y && n == 2) {",
+			},
+		},
+		{
+			name: "call argument in or mix condition",
+			code: `package main
+
+func check(b bool) bool { return b }
+
+func F(x bool, a int, y bool, n int) {
+	if x || a == 1 || check(y && n == 2) {
+	}
+}
+`,
+			wantAssumptions: 2,
+			wantBoolExprs:   4,
+			wantPercentage:  50,
+			wantMessages: []string{
+				"if x || a == 1 || check(y && n == 2) {",
+				"if x || a == 1 || check(y && n == 2) {",
+			},
+		},
+		{
+			name: "call argument on left of mix condition",
+			code: `package main
+
+func check(b bool) bool { return b }
+
+func F(x bool, a int, y bool, n int) {
+	if check(y && n == 2) && x && a == 1 {
+	}
+}
+`,
+			wantAssumptions: 2,
+			wantBoolExprs:   4,
+			wantPercentage:  50,
+			wantMessages: []string{
+				"if check(y && n == 2) && x && a == 1 {",
+				"if check(y && n == 2) && x && a == 1 {",
+			},
+		},
+		{
+			name: "closure in mix condition",
+			code: `package main
+
+func F(x bool, a int, y bool, n int) {
+	if x && a == 1 && func() bool {
+		if y && n == 2 {
+			return true
+		}
+		return false
+	}() {
+	}
+}
+`,
+			wantAssumptions: 2,
+			wantBoolExprs:   5,
+			wantPercentage:  40,
+			wantMessages: []string{
+				"if x && a == 1 && func() bool {",
+				"if y && n == 2 {",
+			},
+		},
+		{
+			name: "closure in or mix condition",
+			code: `package main
+
+func F(x bool, a int, y bool, n int) {
+	if x || a == 1 || func() bool {
+		if y && n == 2 {
+			return true
+		}
+		return false
+	}() {
+	}
+}
+`,
+			wantAssumptions: 2,
+			wantBoolExprs:   5,
+			wantPercentage:  40,
+			wantMessages: []string{
+				"if x || a == 1 || func() bool {",
+				"if y && n == 2 {",
+			},
+		},
+		{
+			name: "parenthesized mix containing call argument",
+			code: `package main
+
+func check(b bool) bool { return b }
+
+func F(x bool, a int, y bool, n int) {
+	if (x && a == 1) && check(y && n == 2) {
+	}
+}
+`,
+			wantAssumptions: 2,
+			wantBoolExprs:   4,
+			wantPercentage:  50,
+			wantMessages: []string{
+				"if (x && a == 1) && check(y && n == 2) {",
+				"if (x && a == 1) && check(y && n == 2) {",
+			},
+		},
+		{
+			name: "unary not wrapping mix in call argument",
+			code: `package main
+
+func check(b bool) bool { return b }
+
+func F(x bool, a int, y bool, n int) {
+	if x && a == 1 && check(!(y && n == 2)) {
+	}
+}
+`,
+			wantAssumptions: 2,
+			wantBoolExprs:   4,
+			wantPercentage:  50,
+			wantMessages: []string{
+				"if x && a == 1 && check(!(y && n == 2)) {",
+				"if x && a == 1 && check(!(y && n == 2)) {",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "repro.go")
+			if err := os.WriteFile(src, []byte(tt.code), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			analyser := NewAnalyser(NewDetector(), nil)
+			result, err := analyser.Analyse([]string{src})
+			if err != nil {
+				t.Fatalf("analyse: %v", err)
+			}
+
+			if got := result.AssumptionsCount(); got != tt.wantAssumptions {
+				t.Errorf("AssumptionsCount() = %d, want %d; assumptions: %#v", got, tt.wantAssumptions, result.Assumptions())
+			}
+			if got := result.BoolExpressionsCount(); got != tt.wantBoolExprs {
+				t.Errorf("BoolExpressionsCount() = %d, want %d", got, tt.wantBoolExprs)
+			}
+			if got := result.Percentage(); got != tt.wantPercentage {
+				t.Errorf("Percentage() = %d, want %d", got, tt.wantPercentage)
+			}
+			if tt.wantAssumptions > 0 {
+				got := make([]string, 0, len(result.Assumptions()))
+				for _, a := range result.Assumptions() {
+					got = append(got, a.Message)
+				}
+				if !reflect.DeepEqual(got, tt.wantMessages) {
+					t.Errorf("messages = %#v, want %#v", got, tt.wantMessages)
+				}
+			}
+		})
+	}
+}

@@ -191,22 +191,26 @@ func (a *Analyser) analyseFile(path string, result *Result, consts *constIndex) 
 
 // markNestedLogicalAssumptions ignores nested && / || nodes under a mix.
 // Record the chain as one assumption. Operand order does not change the
-// count (issue #77).
+// count (issue #77). Do not descend past non-logical boundaries such as
+// function calls or closures (issue #81).
 func markNestedLogicalAssumptions(node ast.Node, ignoredAssumptions map[ast.Node]struct{}) {
 	binary, ok := node.(*ast.BinaryExpr)
 	if !ok || (binary.Op != token.LAND && binary.Op != token.LOR) {
 		return
 	}
 
-	mark := func(n ast.Node) bool {
-		inner, ok := n.(*ast.BinaryExpr)
-		if ok && (inner.Op == token.LAND || inner.Op == token.LOR) {
-			ignoredAssumptions[n] = struct{}{}
+	var mark func(n ast.Node)
+	mark = func(n ast.Node) {
+		inner, ok := unwrap(n).(*ast.BinaryExpr)
+		if !ok || (inner.Op != token.LAND && inner.Op != token.LOR) {
+			return
 		}
-		return true
+		ignoredAssumptions[inner] = struct{}{}
+		mark(inner.X)
+		mark(inner.Y)
 	}
-	ast.Inspect(binary.X, mark)
-	ast.Inspect(binary.Y, mark)
+	mark(binary.X)
+	mark(binary.Y)
 }
 
 func markCommaOkConditionNodes(init ast.Stmt, cond ast.Expr, ignored, ignoredAssumptions map[ast.Node]struct{}) {
