@@ -874,6 +874,76 @@ func Check(x any, a, b int) {
 	}
 }
 
+func TestAnalyserFlagsInvertedBareVariableInClosureWithinCommaOkCondition(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "guard.go")
+	code := `package main
+
+func check(fn func() bool) bool { return fn() }
+
+func F(ch <-chan int, ok bool) {
+	if _, ok := <-ch; ok && check(func() bool {
+		if !ok {
+			return true
+		}
+		return false
+	}) {
+	}
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+	want := []Assumption{{File: src, Line: 7, Message: "if !ok {"}}
+	if got := result.Assumptions(); !reflect.DeepEqual(got, want) {
+		t.Errorf("assumptions mismatch:\n got: %#v\nwant: %#v", got, want)
+	}
+	if got := result.BoolExpressionsCount(); got != 4 {
+		t.Errorf("BoolExpressionsCount() = %d, want 4", got)
+	}
+}
+
+func TestAnalyserFlagsLogicalMixInClosureWithinCommaOkCondition(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "guard.go")
+	code := `package main
+
+func check(fn func() bool) bool { return fn() }
+
+func F(ch <-chan int, ok bool, a int) {
+	if _, ok := <-ch; ok && check(func() bool {
+		if ok && a == 1 {
+			return true
+		}
+		return false
+	}) {
+	}
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{src})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+	want := []Assumption{{File: src, Line: 7, Message: "if ok && a == 1 {"}}
+	if got := result.Assumptions(); !reflect.DeepEqual(got, want) {
+		t.Errorf("assumptions mismatch:\n got: %#v\nwant: %#v", got, want)
+	}
+	if got := result.BoolExpressionsCount(); got != 4 {
+		t.Errorf("BoolExpressionsCount() = %d, want 4", got)
+	}
+}
+
 func TestAnalyserDoesNotFlagChainedCommaOkConditions(t *testing.T) {
 	tests := []struct {
 		name          string
