@@ -88,6 +88,7 @@ script: assumpgo -format xml -output gl-assumpgo.xml ./...
 ## Maintainers
 
 Usage reference: [docs/usage.md](docs/usage.md).
+Exploratory testing reports: [docs/exploratory-testing/](docs/exploratory-testing/).
 
 Development checks:
 

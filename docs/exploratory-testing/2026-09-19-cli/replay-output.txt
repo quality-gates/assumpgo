@@ -1,0 +1,42 @@
+##### run 1
+== F1: ./... walks hidden, _-prefixed, testdata and vendor dirs
+name=".hidden/f.go"
+name="_skip/f.go"
+name="f.go"
+name="testdata/f.go"
+name="vendor/example.com/dep/f.go"
+error: testdata/broken.go:2:6: expected 'IDENT', found '{'
+with broken testdata fixture: exit=100
+== F2: file symlink resolves constants from the link's directory
+real/a.go exit=0
+other/a.go (symlink) exit=110
+== F3: //line directive rewrites reported line and blanks the message
+    <error line="100" severity="error" message="" source="assumpgo"></error>
+##### run 2
+== F1: ./... walks hidden, _-prefixed, testdata and vendor dirs
+name=".hidden/f.go"
+name="_skip/f.go"
+name="f.go"
+name="testdata/f.go"
+name="vendor/example.com/dep/f.go"
+error: testdata/broken.go:2:6: expected 'IDENT', found '{'
+with broken testdata fixture: exit=100
+== F2: file symlink resolves constants from the link's directory
+real/a.go exit=0
+other/a.go (symlink) exit=110
+== F3: //line directive rewrites reported line and blanks the message
+    <error line="100" severity="error" message="" source="assumpgo"></error>
+##### run 3
+== F1: ./... walks hidden, _-prefixed, testdata and vendor dirs
+name=".hidden/f.go"
+name="_skip/f.go"
+name="f.go"
+name="testdata/f.go"
+name="vendor/example.com/dep/f.go"
+error: testdata/broken.go:2:6: expected 'IDENT', found '{'
+with broken testdata fixture: exit=100
+== F2: file symlink resolves constants from the link's directory
+real/a.go exit=0
+other/a.go (symlink) exit=110
+== F3: //line directive rewrites reported line and blanks the message
+    <error line="100" severity="error" message="" source="assumpgo"></error>
