@@ -220,6 +220,9 @@ func markCommaOkConditionNodes(init ast.Stmt, cond ast.Expr, ignored, ignoredAss
 	}
 
 	ast.Inspect(cond, func(node ast.Node) bool {
+		if _, isFuncLit := node.(*ast.FuncLit); isFuncLit {
+			return false
+		}
 		if isCommaOkNotNode(node, okName) {
 			ignored[node] = struct{}{}
 		}
