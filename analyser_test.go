@@ -743,6 +743,43 @@ func TestAnalyserNormalizesInteriorTabs(t *testing.T) {
 	}
 }
 
+func TestAnalyserReportsPhysicalLinesDespiteLineDirectives(t *testing.T) {
+	tests := []struct {
+		name      string
+		directive string
+	}{
+		// Maps past the end of the file: the virtual line has no text.
+		{name: "beyond file", directive: "//line gen.y:100"},
+		// Maps backwards: the virtual line holds unrelated text.
+		{name: "earlier line", directive: "//line gen.y:1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "gen.go")
+			code := "package main\n\n" + tt.directive + "\nfunc check(dog *int) bool {\n\tif dog != nil {\n\t\treturn true\n\t}\n\treturn false\n}\n"
+			if err := os.WriteFile(src, []byte(code), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			result, err := NewAnalyser(NewDetector(), nil).Analyse([]string{src})
+			if err != nil {
+				t.Fatalf("Analyse: %v", err)
+			}
+
+			if result.AssumptionsCount() != 1 {
+				t.Fatalf("expected 1 assumption, got %d", result.AssumptionsCount())
+			}
+
+			want := Assumption{File: src, Line: 5, Message: "if dog != nil {"}
+			if got := result.Assumptions()[0]; got != want {
+				t.Errorf("assumption = %+v, want %+v", got, want)
+			}
+		})
+	}
+}
+
 func TestAnalyseReturnsErrorForMissingFile(t *testing.T) {
 	analyser := NewAnalyser(NewDetector(), nil)
 	if _, err := analyser.Analyse([]string{"does-not-exist.go"}); err == nil {

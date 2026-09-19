@@ -178,7 +178,9 @@ func (a *Analyser) analyseFile(path string, result *Result, consts *constIndex) 
 		}
 
 		if a.detector.Scan(node) {
-			line := fset.Position(node.Pos()).Line
+			// Ignore //line directives: the message is read from this
+			// file, so the line must be physical (issue #87).
+			line := fset.PositionFor(node.Pos(), false).Line
 			result.addAssumption(path, line, readLine(lines, line))
 			markNestedLogicalAssumptions(node, ignoredAssumptions)
 		}
