@@ -190,6 +190,35 @@ func TestRecursivePatternTarget(t *testing.T) {
 	}
 }
 
+func TestRecursivePatternSkipsIgnoredDirectories(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	source := []byte("package p\n\nfunc check(value any) bool {\n\tif value != nil {\n\t\treturn true\n\t}\n\treturn false\n}\n")
+	for _, dir := range []string{"pkg", ".hidden", "_skip", "testdata", "vendor"} {
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "a.go"), source, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join("testdata", "bad.go"), []byte("package p\nfunc ("), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runCapture(t, "."+string(filepath.Separator)+"...")
+	if code != exitAssumption {
+		t.Fatalf("exit = %d, want %d (stderr: %s, stdout: %s)", code, exitAssumption, stderr, stdout)
+	}
+	if stderr != "" {
+		t.Errorf("unexpected stderr: %s", stderr)
+	}
+	if !strings.Contains(stdout, "1 out of 2 boolean expressions are assumptions (50%)") {
+		t.Errorf("expected only pkg/a.go to be analysed, got:\n%s", stdout)
+	}
+}
+
 func TestMultipleTargetsDeduplicated(t *testing.T) {
 	stdout, _, code := runCapture(t, fixture("dog.go"), fixture("dog.go"))
 	if code != exitAssumption {

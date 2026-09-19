@@ -9,6 +9,11 @@ assumpgo -version
 ```
 
 `<path>...` is one or more `.go` files or directories (walked recursively).
+A path ending in `...` (such as `./...` or `pkg/...`) walks the directory before
+it the way Go's `./...` pattern does: subdirectories whose names start with `.`
+or `_`, or are named `testdata` or `vendor`, are skipped. A plain directory
+path is walked in full, and naming a skipped directory or a file inside it
+directly (`testdata/fixtures/dog.go`) still analyses it.
 Multiple paths that are symlinks or hard links pointing to the same underlying
 file are deduplicated and analysed once.
 
