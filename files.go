@@ -9,13 +9,16 @@ import (
 
 // CollectGoFiles returns the list of .go files reachable from fromPath,
 // cleaned using filepath.Clean. A trailing ... path component is treated as a
-// recursive pattern rooted at its containing directory. If fromPath is a
-// single file it is returned; if it is a directory it is walked recursively,
-// following directory symlinks without revisiting a directory.
+// recursive pattern rooted at its containing directory; like Go's ./...
+// pattern it skips subdirectories whose names start with . or _ or are
+// testdata or vendor. If fromPath is a single file it is returned; if it is a
+// directory it is walked recursively, following directory symlinks without
+// revisiting a directory.
 func CollectGoFiles(fromPath string) ([]string, error) {
 	pathToCollect := fromPath
 	cleanPattern := filepath.Clean(fromPath)
-	if filepath.Base(cleanPattern) == "..." {
+	pattern := filepath.Base(cleanPattern) == "..."
+	if pattern {
 		pathToCollect = filepath.Dir(cleanPattern)
 	}
 
@@ -30,7 +33,7 @@ func CollectGoFiles(fromPath string) ([]string, error) {
 	}
 
 	var paths []string
-	err = walkGoFiles(cleanPath, nil, &paths)
+	err = walkGoFiles(cleanPath, pattern, nil, &paths)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +41,7 @@ func CollectGoFiles(fromPath string) ([]string, error) {
 	return paths, nil
 }
 
-func walkGoFiles(path string, visited []os.FileInfo, paths *[]string) error {
+func walkGoFiles(path string, pattern bool, visited []os.FileInfo, paths *[]string) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
@@ -68,7 +71,10 @@ func walkGoFiles(path string, visited []os.FileInfo, paths *[]string) error {
 			return err
 		}
 		if childInfo.IsDir() {
-			if err := walkGoFiles(child, visited, paths); err != nil {
+			if pattern && ignoredByPattern(entry.Name()) {
+				continue
+			}
+			if err := walkGoFiles(child, pattern, visited, paths); err != nil {
 				return err
 			}
 			continue
@@ -79,6 +85,13 @@ func walkGoFiles(path string, visited []os.FileInfo, paths *[]string) error {
 	}
 
 	return nil
+}
+
+// ignoredByPattern reports whether a directory named name is skipped by a
+// recursive ... pattern, matching the go command's package pattern rules.
+func ignoredByPattern(name string) bool {
+	return strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") ||
+		name == "testdata" || name == "vendor"
 }
 
 // CollectFromList expands a comma separated list of files/directories into a

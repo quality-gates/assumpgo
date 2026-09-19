@@ -611,3 +611,65 @@ func TestCollectFromListDeduplicatesFilesystemAliases(t *testing.T) {
 		t.Errorf("CollectFromList = %v, want [%q]", got, victim)
 	}
 }
+
+func TestCollectGoFilesRecursivePatternSkipsIgnoredDirectories(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"pkg", ".hidden", "_skip", "testdata", "vendor", filepath.Join("pkg", "testdata"), filepath.Join("pkg", "x_y")} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, dir, "a.go"), []byte("package p\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := CollectGoFiles(filepath.Join(root, "..."))
+	if err != nil {
+		t.Fatalf("CollectGoFiles: %v", err)
+	}
+	want := []string{
+		filepath.Join(root, "pkg", "a.go"),
+		filepath.Join(root, "pkg", "x_y", "a.go"),
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("CollectGoFiles(%q) = %v, want %v", filepath.Join(root, "..."), got, want)
+	}
+}
+
+func TestCollectGoFilesRecursivePatternKeepsIgnoredRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "testdata")
+	if err := os.MkdirAll(filepath.Join(root, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "nested", "a.go")
+	if err := os.WriteFile(file, []byte("package p\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := CollectGoFiles(filepath.Join(root, "..."))
+	if err != nil {
+		t.Fatalf("CollectGoFiles: %v", err)
+	}
+	if len(got) != 1 || got[0] != file {
+		t.Errorf("CollectGoFiles = %v, want [%q]", got, file)
+	}
+}
+
+func TestCollectGoFilesDirectoryWithoutPatternKeepsIgnoredDirectories(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "testdata"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "testdata", "a.go")
+	if err := os.WriteFile(file, []byte("package p\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := CollectGoFiles(root)
+	if err != nil {
+		t.Fatalf("CollectGoFiles: %v", err)
+	}
+	if len(got) != 1 || got[0] != file {
+		t.Errorf("CollectGoFiles = %v, want [%q]", got, file)
+	}
+}
