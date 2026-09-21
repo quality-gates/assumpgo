@@ -142,7 +142,13 @@ func (a *Analyser) analyseFile(path string, result *Result, consts *constIndex) 
 	// Object resolution is per-file, so a constant declared in another file of
 	// the same package is left unresolved and would look like a variable
 	// (issue #58). Resolve those against the package's other files.
-	resolvePackageConsts(f, consts.names(filepath.Dir(path), f.Name.Name))
+	// Use the target's real directory so a file symlink cannot change its
+	// package context (issue #86).
+	constDir := filepath.Dir(path)
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		constDir = filepath.Dir(resolved)
+	}
+	resolvePackageConsts(f, consts.names(constDir, f.Name.Name))
 
 	lines := strings.Split(string(src), "\n")
 
