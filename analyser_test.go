@@ -122,6 +122,56 @@ func check() bool {
 	}
 }
 
+func TestAnalyserResolvesConstantsThroughFileSymlink(t *testing.T) {
+	root := t.TempDir()
+	realDir := filepath.Join(root, "real")
+	linkDir := filepath.Join(root, "other")
+	if err := os.MkdirAll(realDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(linkDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	defs := filepath.Join(realDir, "defs.go")
+	uses := filepath.Join(realDir, "uses.go")
+	link := filepath.Join(linkDir, "uses.go")
+	if err := os.WriteFile(defs, []byte("package p\n\nconst Debug = false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code := "package p\n\nfunc check() {\n\tif Debug {\n\t}\n}\n"
+	if err := os.WriteFile(uses, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..", "real", "uses.go"), link); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name    string
+		targets []string
+	}{
+		{name: "direct", targets: []string{uses}},
+		{name: "file symlink", targets: []string{link}},
+		{name: "direct then symlink", targets: []string{uses, link}},
+		{name: "symlink then direct", targets: []string{link, uses}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := NewAnalyser(NewDetector(), nil).Analyse(tt.targets)
+			if err != nil {
+				t.Fatalf("analyse %q: %v", tt.targets, err)
+			}
+			if got := result.AssumptionsCount(); got != 0 {
+				t.Errorf("AssumptionsCount() for %q = %d, want 0; assumptions: %#v", tt.targets, got, result.Assumptions())
+			}
+			if got := result.BoolExpressionsCount(); got != 1 {
+				t.Errorf("BoolExpressionsCount() for %q = %d, want 1", tt.targets, got)
+			}
+		})
+	}
+}
+
 func TestAnalyserHonoursExcludes(t *testing.T) {
 	file := filepath.Join("testdata", "fixtures", "dog.go")
 	analyser := NewAnalyser(NewDetector(), []string{file})
