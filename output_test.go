@@ -12,6 +12,54 @@ func resultWith(assumptions ...Assumption) *Result {
 	return r
 }
 
+// TestPrettyOutputFullDocument verifies that PrettyOutput encapsulates the
+// complete rendered document: version banner, table, and summary line, in that
+// order, through the public Output interface.
+func TestPrettyOutputFullDocument(t *testing.T) {
+	r := resultWith(
+		Assumption{File: "a.go", Line: 2, Message: "if x != nil {"},
+	)
+
+	var buf bytes.Buffer
+	if err := NewPrettyOutput("9.9.9").Output(&buf, r); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+
+	want := "assumpgo analyser v9.9.9 by quality-gates\n\n"
+	if !strings.HasPrefix(out, want) {
+		t.Errorf("output should start with the banner %q, got:\n%s", want, out)
+	}
+	if !strings.Contains(out, "|") {
+		t.Errorf("banner should be followed by the table:\n%s", out)
+	}
+	if !strings.HasSuffix(out, "1 out of 3 boolean expressions are assumptions (33%)\n") {
+		t.Errorf("document should end with the summary line:\n%s", out)
+	}
+}
+
+// TestPrettyOutputZeroValueHasNoBanner pins the zero-value contract: a
+// PrettyOutput constructed without a version renders only the table and
+// summary, with no banner line.
+func TestPrettyOutputZeroValueHasNoBanner(t *testing.T) {
+	r := resultWith(
+		Assumption{File: "a.go", Line: 2, Message: "if x != nil {"},
+	)
+
+	var buf bytes.Buffer
+	if err := (PrettyOutput{}).Output(&buf, r); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+
+	if strings.Contains(out, "assumpgo analyser") {
+		t.Errorf("zero-value PrettyOutput should not emit a banner:\n%s", out)
+	}
+	if !strings.HasPrefix(out, "-") {
+		t.Errorf("output should start with the table border:\n%s", out)
+	}
+}
+
 func TestPrettyOutputWithAssumptions(t *testing.T) {
 	r := resultWith(
 		Assumption{File: "a.go", Line: 2, Message: "if x != nil {"},

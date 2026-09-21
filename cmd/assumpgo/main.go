@@ -96,14 +96,9 @@ func run(args []string, stdout, stderr *os.File) int {
 		sink = f
 	}
 
-	// The decorative banner is for humans reading the pretty table. It follows
-	// the report sink so `-output` does not leave it on stdout. In XML mode
-	// the destination is a data stream (the README advertises `-format xml`
-	// for CI), so emitting the banner there would produce invalid XML.
-	if *format != "xml" {
-		fmt.Fprintf(sink, "assumpgo analyser v%s by quality-gates\n\n", version)
-	}
-
+	// Each renderer owns its complete document: PrettyOutput writes the
+	// version banner and XMLOutput the XML declaration, so nothing here
+	// inspects the format or writes format-specific headers.
 	if err := renderer.Output(sink, result); err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return exitUsage
@@ -119,7 +114,7 @@ func run(args []string, stdout, stderr *os.File) int {
 func rendererFor(format string) (assumpgo.Output, error) {
 	switch format {
 	case "pretty":
-		return assumpgo.PrettyOutput{}, nil
+		return assumpgo.NewPrettyOutput(version), nil
 	case "xml":
 		return assumpgo.XMLOutput{}, nil
 	default:
