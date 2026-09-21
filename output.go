@@ -14,11 +14,27 @@ type Output interface {
 }
 
 // PrettyOutput renders a human readable table, mirroring php-assumptions'
-// pretty output.
-type PrettyOutput struct{}
+// pretty output. It owns the complete rendered document: the version banner
+// (when a Version is set), the table, and the summary line.
+type PrettyOutput struct {
+	Version string
+}
 
-// Output writes the table and summary line.
-func (PrettyOutput) Output(w io.Writer, result *Result) error {
+// NewPrettyOutput returns a PrettyOutput that prefixes its report with the
+// "assumpgo analyser v<version> by quality-gates" banner.
+func NewPrettyOutput(version string) *PrettyOutput {
+	return &PrettyOutput{Version: version}
+}
+
+// Output writes the banner (when a Version is set), the table, and the summary
+// line.
+func (o PrettyOutput) Output(w io.Writer, result *Result) error {
+	if o.Version != "" {
+		if _, err := fmt.Fprintf(w, "assumpgo analyser v%s by quality-gates\n\n", o.Version); err != nil {
+			return err
+		}
+	}
+
 	if result.AssumptionsCount() > 0 {
 		if err := writeTable(w, result.Assumptions()); err != nil {
 			return err
