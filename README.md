@@ -56,7 +56,9 @@ assumpgo -format xml -exclude vendor,generated ./...
 Directory symlinks are followed for targets and exclusions, including links
 found inside a walked tree; cyclic links are visited only once. Symlinks and hard
 links to individual files are supported too, and aliases of the same file are
-deduplicated so each underlying file is analysed once.
+deduplicated so each underlying file is analysed once. Only regular files are
+analysed; non-regular entries such as named pipes are skipped, even when their
+names end in `.go`.
 
 There is no ruleset file: the analyzer’s pattern set is fixed. See
 [docs/usage.md](docs/usage.md) for what counts as an assumption.

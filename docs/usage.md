@@ -15,7 +15,9 @@ or `_`, or are named `testdata` or `vendor`, are skipped. A plain directory
 path is walked in full, and naming a skipped directory or a file inside it
 directly (`testdata/fixtures/dog.go`) still analyses it.
 Multiple paths that are symlinks or hard links pointing to the same underlying
-file are deduplicated and analysed once.
+file are deduplicated and analysed once. Only regular files are analysed;
+non-regular entries such as named pipes are skipped, even when their names end
+in `.go`.
 
 `-format` / `-f` accepts exactly `pretty` (the default human table) or `xml`
 (checkstyle). Values are case-sensitive and lowercase-only: `-format XML`,

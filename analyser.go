@@ -291,7 +291,13 @@ func scanDirConsts(dir string) map[string]map[string]struct{} {
 			continue
 		}
 
-		f, err := parser.ParseFile(fset, filepath.Join(dir, entry.Name()), nil, parser.SkipObjectResolution)
+		path := filepath.Join(dir, entry.Name())
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+
+		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
 		if err != nil {
 			continue
 		}
