@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -168,6 +169,34 @@ func TestCollectGoFilesIgnoresNonGo(t *testing.T) {
 	}
 	if len(got) != 1 || !strings.HasSuffix(got[0], "keep.go") {
 		t.Errorf("CollectGoFiles = %v, want only keep.go", got)
+	}
+}
+
+func TestCollectGoFilesSkipsNamedPipes(t *testing.T) {
+	dir := t.TempDir()
+	regular := filepath.Join(dir, "keep.go")
+	pipe := filepath.Join(dir, "pipe.go")
+	if err := os.WriteFile(regular, []byte("package x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(pipe, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := CollectGoFiles(dir)
+	if err != nil {
+		t.Fatalf("CollectGoFiles directory: %v", err)
+	}
+	if len(got) != 1 || got[0] != regular {
+		t.Errorf("CollectGoFiles(%q) = %v, want [%q]", dir, got, regular)
+	}
+
+	got, err = CollectGoFiles(pipe)
+	if err != nil {
+		t.Fatalf("CollectGoFiles named pipe: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("CollectGoFiles(%q) = %v, want no paths", pipe, got)
 	}
 }
 

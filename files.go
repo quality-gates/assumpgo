@@ -29,6 +29,9 @@ func CollectGoFiles(fromPath string) ([]string, error) {
 
 	cleanPath := filepath.Clean(pathToCollect)
 	if !info.IsDir() {
+		if !info.Mode().IsRegular() {
+			return nil, nil
+		}
 		return []string{cleanPath}, nil
 	}
 
@@ -77,6 +80,9 @@ func walkGoFiles(path string, pattern bool, visited []os.FileInfo, paths *[]stri
 			if err := walkGoFiles(child, pattern, visited, paths); err != nil {
 				return err
 			}
+			continue
+		}
+		if !childInfo.Mode().IsRegular() {
 			continue
 		}
 		if strings.HasSuffix(child, ".go") {

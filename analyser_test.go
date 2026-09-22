@@ -4,7 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func analyseExample(t *testing.T) *Result {
@@ -846,6 +848,40 @@ func TestAnalyseReturnsErrorForInvalidGo(t *testing.T) {
 	analyser := NewAnalyser(NewDetector(), nil)
 	if _, err := analyser.Analyse([]string{bad}); err == nil {
 		t.Error("expected a parse error for invalid Go")
+	}
+}
+
+func TestAnalyseDoesNotReadNamedPipesDuringConstantDiscovery(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "valid.go")
+	pipe := filepath.Join(dir, "pipe.go")
+	if err := os.WriteFile(source, []byte("package p\n\nfunc check() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(pipe, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	type analysisResult struct {
+		result *Result
+		err    error
+	}
+	done := make(chan analysisResult, 1)
+	go func() {
+		result, err := NewAnalyser(NewDetector(), nil).Analyse([]string{source})
+		done <- analysisResult{result: result, err: err}
+	}()
+
+	select {
+	case outcome := <-done:
+		if outcome.err != nil {
+			t.Fatalf("Analyse: %v", outcome.err)
+		}
+		if got := outcome.result.AssumptionsCount(); got != 0 {
+			t.Errorf("AssumptionsCount() = %d, want 0", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Analyse blocked while resolving constants in a directory containing a named pipe")
 	}
 }
 
