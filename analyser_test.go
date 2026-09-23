@@ -2048,3 +2048,42 @@ func F(x bool, a int, y bool, n int) {
 		})
 	}
 }
+
+func TestAnalyserDoesNotBorrowConstantsFromDotOrUnderscorePrefixedFiles(t *testing.T) {
+	dir := t.TempDir()
+	draft := filepath.Join(dir, "_draft.go")
+	hidden := filepath.Join(dir, ".hidden.go")
+	uses := filepath.Join(dir, "uses.go")
+
+	if err := os.WriteFile(draft, []byte("package p\n\nconst DraftReady = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hidden, []byte("package p\n\nconst HiddenReady = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code := `package p
+
+func check() bool {
+	if DraftReady {
+		return true
+	}
+	if HiddenReady {
+		return true
+	}
+	return false
+}
+`
+	if err := os.WriteFile(uses, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{uses})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+
+	if got := result.AssumptionsCount(); got != 2 {
+		t.Errorf("AssumptionsCount() = %d, want 2; assumptions: %#v", got, result.Assumptions())
+	}
+}
