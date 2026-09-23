@@ -702,3 +702,55 @@ func TestCollectGoFilesDirectoryWithoutPatternKeepsIgnoredDirectories(t *testing
 		t.Errorf("CollectGoFiles = %v, want [%q]", got, file)
 	}
 }
+
+func TestCollectGoFilesWalkSkipsDotAndUnderscorePrefixedFiles(t *testing.T) {
+	root := t.TempDir()
+	files := []string{
+		"keep.go",
+		"_disabled.go",
+		".hidden.go",
+		"._main.go",
+		filepath.Join("sub", "nested.go"),
+		filepath.Join("sub", "_sub_disabled.go"),
+		filepath.Join("sub", ".sub_hidden.go"),
+		filepath.Join("sub", "._sub_main.go"),
+	}
+	for _, rel := range files {
+		abs := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte("package p\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, target := range []string{root, filepath.Join(root, "...")} {
+		got, err := CollectGoFiles(target)
+		if err != nil {
+			t.Fatalf("CollectGoFiles(%q): %v", target, err)
+		}
+		want := []string{
+			filepath.Join(root, "keep.go"),
+			filepath.Join(root, "sub", "nested.go"),
+		}
+		if len(got) != len(want) {
+			t.Errorf("CollectGoFiles(%q) = %v, want %v", target, got, want)
+		}
+	}
+}
+
+func TestCollectGoFilesDirectFileKeepsDotAndUnderscorePrefixed(t *testing.T) {
+	root := t.TempDir()
+	disabled := filepath.Join(root, "_disabled.go")
+	if err := os.WriteFile(disabled, []byte("package p\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := CollectGoFiles(disabled)
+	if err != nil {
+		t.Fatalf("CollectGoFiles: %v", err)
+	}
+	if len(got) != 1 || got[0] != disabled {
+		t.Errorf("CollectGoFiles(%q) = %v, want [%q]", disabled, got, disabled)
+	}
+}

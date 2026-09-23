@@ -13,7 +13,7 @@ import (
 // pattern it skips subdirectories whose names start with . or _ or are
 // testdata or vendor. If fromPath is a single file it is returned; if it is a
 // directory it is walked recursively, following directory symlinks without
-// revisiting a directory.
+// revisiting a directory, skipping files whose names start with . or _.
 func CollectGoFiles(fromPath string) ([]string, error) {
 	pathToCollect := fromPath
 	cleanPattern := filepath.Clean(fromPath)
@@ -53,10 +53,8 @@ func walkGoFiles(path string, pattern bool, visited []os.FileInfo, paths *[]stri
 		return nil
 	}
 
-	for _, seen := range visited {
-		if os.SameFile(seen, info) {
-			return nil
-		}
+	if containsSameFile(visited, info) {
+		return nil
 	}
 	visited = append(visited, info)
 
@@ -85,12 +83,21 @@ func walkGoFiles(path string, pattern bool, visited []os.FileInfo, paths *[]stri
 		if !childInfo.Mode().IsRegular() {
 			continue
 		}
+		if ignoredGoFile(entry.Name()) {
+			continue
+		}
 		if strings.HasSuffix(child, ".go") {
 			*paths = append(*paths, filepath.Clean(child))
 		}
 	}
 
 	return nil
+}
+
+// ignoredGoFile reports whether a file named name is ignored by Go's toolchain
+// because its name starts with '.' or '_'.
+func ignoredGoFile(name string) bool {
+	return strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")
 }
 
 // ignoredByPattern reports whether a directory named name is skipped by a

@@ -290,6 +290,9 @@ func scanDirConsts(dir string) map[string]map[string]struct{} {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
 			continue
 		}
+		if ignoredGoFile(entry.Name()) {
+			continue
+		}
 
 		path := filepath.Join(dir, entry.Name())
 		info, err := os.Stat(path)
