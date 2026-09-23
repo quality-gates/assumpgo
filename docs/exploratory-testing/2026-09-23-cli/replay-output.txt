@@ -1,0 +1,51 @@
+##### run 1
+== F1: ./... collects hidden (.-prefixed) and _-prefixed files
+-- go vet ./... (should pass, ignoring ._ and _-prefixed files) --
+go vet exit=0
+-- assumpgo ./... with AppleDouble ._main.go present --
+error: ._main.go:1:1: illegal character NUL (and 1 more errors)
+with ._main.go: exit=100
+-- assumpgo ./... with only _disabled.go (._main.go removed) --
+    <error line="4" severity="error" message="if x != nil {" source="assumpgo"></error>
+with _disabled.go: exit=110
+== F1 (cont): scanDirConsts resolves constants from _-prefixed files
+-- go build ./... (fails because Debug is in ignored file) --
+# example.com/f2
+./main.go:4:5: undefined: Debug
+go build exit=1
+-- assumpgo ./... (erroneously treats Debug as package const) --
+assumpgo exit=0
+##### run 2
+== F1: ./... collects hidden (.-prefixed) and _-prefixed files
+-- go vet ./... (should pass, ignoring ._ and _-prefixed files) --
+go vet exit=0
+-- assumpgo ./... with AppleDouble ._main.go present --
+error: ._main.go:1:1: illegal character NUL (and 1 more errors)
+with ._main.go: exit=100
+-- assumpgo ./... with only _disabled.go (._main.go removed) --
+    <error line="4" severity="error" message="if x != nil {" source="assumpgo"></error>
+with _disabled.go: exit=110
+== F1 (cont): scanDirConsts resolves constants from _-prefixed files
+-- go build ./... (fails because Debug is in ignored file) --
+# example.com/f2
+./main.go:4:5: undefined: Debug
+go build exit=1
+-- assumpgo ./... (erroneously treats Debug as package const) --
+assumpgo exit=0
+##### run 3
+== F1: ./... collects hidden (.-prefixed) and _-prefixed files
+-- go vet ./... (should pass, ignoring ._ and _-prefixed files) --
+go vet exit=0
+-- assumpgo ./... with AppleDouble ._main.go present --
+error: ._main.go:1:1: illegal character NUL (and 1 more errors)
+with ._main.go: exit=100
+-- assumpgo ./... with only _disabled.go (._main.go removed) --
+    <error line="4" severity="error" message="if x != nil {" source="assumpgo"></error>
+with _disabled.go: exit=110
+== F1 (cont): scanDirConsts resolves constants from _-prefixed files
+-- go build ./... (fails because Debug is in ignored file) --
+# example.com/f2
+./main.go:4:5: undefined: Debug
+go build exit=1
+-- assumpgo ./... (erroneously treats Debug as package const) --
+assumpgo exit=0
