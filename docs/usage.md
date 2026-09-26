@@ -14,8 +14,9 @@ it the way Go's `./...` pattern does: subdirectories whose names start with `.`
 or `_`, or are named `testdata` or `vendor`, are skipped. A plain directory
 path is walked in full, and naming a skipped directory or a file inside it
 directly (`testdata/fixtures/dog.go`) still analyses it. Directory walks skip
-files whose names start with `.` or `_` (e.g. `_disabled.go`, `._main.go`),
-matching Go's toolchain behavior.
+files whose names start with `.` or `_` (e.g. `_disabled.go`, `._main.go`) and
+files excluded by Go build constraints (such as `*_windows.go` on other systems
+or `//go:build ignore`), matching Go's toolchain behavior.
 Multiple paths that are symlinks or hard links pointing to the same underlying
 file are deduplicated and analysed once. Only regular files are analysed;
 non-regular entries such as named pipes are skipped, even when their names end

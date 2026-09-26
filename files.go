@@ -2,6 +2,7 @@ package assumpgo
 
 import (
 	"errors"
+	"go/build"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,8 @@ import (
 // pattern it skips subdirectories whose names start with . or _ or are
 // testdata or vendor. If fromPath is a single file it is returned; if it is a
 // directory it is walked recursively, following directory symlinks without
-// revisiting a directory, skipping files whose names start with . or _.
+// revisiting a directory, skipping files whose names start with . or _ or
+// that are excluded by build constraints.
 func CollectGoFiles(fromPath string) ([]string, error) {
 	pathToCollect := fromPath
 	cleanPattern := filepath.Clean(fromPath)
@@ -80,18 +82,37 @@ func walkGoFiles(path string, pattern bool, visited []os.FileInfo, paths *[]stri
 			}
 			continue
 		}
-		if !childInfo.Mode().IsRegular() {
-			continue
+		collect, err := shouldCollectFile(path, entry, childInfo)
+		if err != nil {
+			return err
 		}
-		if ignoredGoFile(entry.Name()) {
-			continue
-		}
-		if strings.HasSuffix(child, ".go") {
+		if collect {
 			*paths = append(*paths, filepath.Clean(child))
 		}
 	}
 
 	return nil
+}
+
+// shouldCollectFile reports whether entry in dir is a regular .go file that
+// matches the build context and is not ignored.
+func shouldCollectFile(dir string, entry os.DirEntry, info os.FileInfo) (bool, error) {
+	if !info.Mode().IsRegular() {
+		return false, nil
+	}
+	if ignoredGoFile(entry.Name()) {
+		return false, nil
+	}
+	if !strings.HasSuffix(entry.Name(), ".go") {
+		return false, nil
+	}
+	return matchGoFile(dir, entry.Name())
+}
+
+// matchGoFile reports whether the Go source file named name in dir matches
+// the default build context (current GOOS/GOARCH and build tags).
+func matchGoFile(dir, name string) (bool, error) {
+	return build.Default.MatchFile(dir, name)
 }
 
 // ignoredGoFile reports whether a file named name is ignored by Go's toolchain
