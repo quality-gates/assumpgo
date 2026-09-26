@@ -1,0 +1,144 @@
+########## run 1 ##########
+== F1: ./... analyses files the go tool ignores
+-- go vet ./... (darwin; sys_windows.go is not in the build) --
+go vet exit=0
+-- assumpgo ./... --
+error: sys_windows.go:3:14: expected ')', found '{' (and 1 more errors)
+assumpgo exit=100
+-- go vet ./... with //go:build ignore syntax error --
+go vet exit=0
+-- assumpgo ./... --
+error: skip.go:5:14: expected ')', found '{' (and 1 more errors)
+assumpgo exit=100
+-- valid windows-only assumption; go vet then assumpgo --
+go vet exit=0
+assumpgo exit=110
+assumpgo analyser v0.1.7 by quality-gates
+
+-----------------------------------------
+| file           | line | message       |
+=========================================
+| sys_windows.go | 4    | if x != nil { |
+-----------------------------------------
+
+1 out of 3 boolean expressions are assumptions (33%)
+== F2: const in a build-excluded file hides a variable assumption
+-- go vet ./... --
+go vet exit=0
+-- assumpgo use.go (Enabled is a var on darwin) --
+assumpgo exit=0
+-- same file after removing the windows-only const --
+assumpgo exit=110
+== F3: pretty table rows are narrower than the border for emoji
+-- flag.out --
+wcswidth=42 ------------------------------------------
+wcswidth=42 | file    | line | message               |
+wcswidth=42 ==========================================
+wcswidth=40 | flag.go | 4    | if x != nil { // 🇬🇧 |
+wcswidth=42 ------------------------------------------
+-- heart.out --
+wcswidth=41 -----------------------------------------
+wcswidth=41 | file     | line | message             |
+wcswidth=41 =========================================
+wcswidth=40 | heart.go | 4    | if x != nil { // ❤️ |
+wcswidth=41 -----------------------------------------
+== F4: pretty output contains raw ESC from the source line
+esc_bytes 2
+b'| ansi.go | 4    | if x != nil { // \x1b[31mX\x1b[0m |'
+
+########## run 2 ##########
+== F1: ./... analyses files the go tool ignores
+-- go vet ./... (darwin; sys_windows.go is not in the build) --
+go vet exit=0
+-- assumpgo ./... --
+error: sys_windows.go:3:14: expected ')', found '{' (and 1 more errors)
+assumpgo exit=100
+-- go vet ./... with //go:build ignore syntax error --
+go vet exit=0
+-- assumpgo ./... --
+error: skip.go:5:14: expected ')', found '{' (and 1 more errors)
+assumpgo exit=100
+-- valid windows-only assumption; go vet then assumpgo --
+go vet exit=0
+assumpgo exit=110
+assumpgo analyser v0.1.7 by quality-gates
+
+-----------------------------------------
+| file           | line | message       |
+=========================================
+| sys_windows.go | 4    | if x != nil { |
+-----------------------------------------
+
+1 out of 3 boolean expressions are assumptions (33%)
+== F2: const in a build-excluded file hides a variable assumption
+-- go vet ./... --
+go vet exit=0
+-- assumpgo use.go (Enabled is a var on darwin) --
+assumpgo exit=0
+-- same file after removing the windows-only const --
+assumpgo exit=110
+== F3: pretty table rows are narrower than the border for emoji
+-- flag.out --
+wcswidth=42 ------------------------------------------
+wcswidth=42 | file    | line | message               |
+wcswidth=42 ==========================================
+wcswidth=40 | flag.go | 4    | if x != nil { // 🇬🇧 |
+wcswidth=42 ------------------------------------------
+-- heart.out --
+wcswidth=41 -----------------------------------------
+wcswidth=41 | file     | line | message             |
+wcswidth=41 =========================================
+wcswidth=40 | heart.go | 4    | if x != nil { // ❤️ |
+wcswidth=41 -----------------------------------------
+== F4: pretty output contains raw ESC from the source line
+esc_bytes 2
+b'| ansi.go | 4    | if x != nil { // \x1b[31mX\x1b[0m |'
+
+########## run 3 ##########
+== F1: ./... analyses files the go tool ignores
+-- go vet ./... (darwin; sys_windows.go is not in the build) --
+go vet exit=0
+-- assumpgo ./... --
+error: sys_windows.go:3:14: expected ')', found '{' (and 1 more errors)
+assumpgo exit=100
+-- go vet ./... with //go:build ignore syntax error --
+go vet exit=0
+-- assumpgo ./... --
+error: skip.go:5:14: expected ')', found '{' (and 1 more errors)
+assumpgo exit=100
+-- valid windows-only assumption; go vet then assumpgo --
+go vet exit=0
+assumpgo exit=110
+assumpgo analyser v0.1.7 by quality-gates
+
+-----------------------------------------
+| file           | line | message       |
+=========================================
+| sys_windows.go | 4    | if x != nil { |
+-----------------------------------------
+
+1 out of 3 boolean expressions are assumptions (33%)
+== F2: const in a build-excluded file hides a variable assumption
+-- go vet ./... --
+go vet exit=0
+-- assumpgo use.go (Enabled is a var on darwin) --
+assumpgo exit=0
+-- same file after removing the windows-only const --
+assumpgo exit=110
+== F3: pretty table rows are narrower than the border for emoji
+-- flag.out --
+wcswidth=42 ------------------------------------------
+wcswidth=42 | file    | line | message               |
+wcswidth=42 ==========================================
+wcswidth=40 | flag.go | 4    | if x != nil { // 🇬🇧 |
+wcswidth=42 ------------------------------------------
+-- heart.out --
+wcswidth=41 -----------------------------------------
+wcswidth=41 | file     | line | message             |
+wcswidth=41 =========================================
+wcswidth=40 | heart.go | 4    | if x != nil { // ❤️ |
+wcswidth=41 -----------------------------------------
+== F4: pretty output contains raw ESC from the source line
+esc_bytes 2
+b'| ansi.go | 4    | if x != nil { // \x1b[31mX\x1b[0m |'
+
