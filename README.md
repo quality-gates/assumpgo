@@ -18,6 +18,9 @@ assumpgo ./...
 
 That scans the tree and prints assumption findings plus the assumption ratio.
 Exit `0` is clean, `110` means assumptions found, `100` means usage error.
+The pretty table renders control characters in file paths and source lines as
+visible escapes such as `\x1b` for ESC; tabs remain spaces. This keeps scanned
+text from changing terminal state and preserves table alignment.
 
 Common next steps:
 

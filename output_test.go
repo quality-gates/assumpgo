@@ -263,6 +263,55 @@ func TestPrettyOutputMultibyteAlignment(t *testing.T) {
 	}
 }
 
+func TestPrettyOutputEscapesTerminalControls(t *testing.T) {
+	r := resultWith(
+		Assumption{File: "ansi\x1b.go", Line: 4, Message: "if dog != nil { // \x1b[31mX\x1b[0m"},
+		Assumption{File: "c1\u009b.go", Line: 6, Message: "if cat != nil { // \u009b"},
+		Assumption{File: "tab\tname.go", Line: 8, Message: "if tab\tvar {"},
+	)
+
+	var buf bytes.Buffer
+	if err := (PrettyOutput{}).Output(&buf, r); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+
+	for _, control := range []rune{'\x1b', '\u009b'} {
+		if strings.ContainsRune(out, control) {
+			t.Errorf("pretty output contains raw control character %#U:\n%q", control, out)
+		}
+	}
+	for _, want := range []string{
+		`ansi\x1b.go`,
+		`if dog != nil { // \x1b[31mX\x1b[0m`,
+		`c1\x9b.go`,
+		`if cat != nil { // \x9b`,
+		`tab name.go`,
+		`if tab var {`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("pretty output missing escaped text %q:\n%s", want, out)
+		}
+	}
+
+	var tableLines []string
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			break
+		}
+		tableLines = append(tableLines, line)
+	}
+	if len(tableLines) != 7 {
+		t.Fatalf("expected 7 table lines, got %d:\n%s", len(tableLines), out)
+	}
+	wantWidth := stringWidth(tableLines[0])
+	for i, line := range tableLines {
+		if got := stringWidth(line); got != wantWidth {
+			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, line)
+		}
+	}
+}
+
 func TestRuneWidth(t *testing.T) {
 	tests := []struct {
 		r    rune
