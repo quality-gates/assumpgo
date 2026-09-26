@@ -61,7 +61,9 @@ analysed; non-regular entries such as named pipes are skipped, even when their
 names end in `.go`. Files whose names begin with `.` or `_`, or that are
 excluded by Go build constraints (such as `*_windows.go` on other systems or
 `//go:build ignore`), are skipped during directory walks, matching Go's toolchain
-behavior; naming such a file directly still analyses it.
+behavior; naming such a file directly still analyses it. The same constraints
+apply when resolving package-level constants: a `const` in a file the current
+build excludes does not hide a bare-variable assumption.
 
 There is no ruleset file: the analyzer’s pattern set is fixed. See
 [docs/usage.md](docs/usage.md) for what counts as an assumption.
