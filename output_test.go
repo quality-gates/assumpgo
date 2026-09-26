@@ -426,6 +426,9 @@ func TestStringWidth(t *testing.T) {
 		{"café ☕", 7}, // 4 (café) + 1 (space) + 2 (☕)
 		{"日本語", 6},
 		{"🚀 rocket", 9}, // 2 (🚀) + 1 (space) + 6 (rocket)
+		{"🇬🇧", 2},       // Regional indicator pairs form a two-column flag
+		{"❤", 1},        // Text-presentation heart
+		{"❤️", 1},       // Variation selector does not add a terminal column
 		{"\x00abc", 3},  // null byte is width 0
 
 		// Combining marks are zero terminal width: "e" + U+0301 renders as
@@ -631,6 +634,54 @@ func TestPrettyOutputZeroWidthFormatAlignment(t *testing.T) {
 	for i, l := range tableLines {
 		if got := visualWidth(l); got != wantWidth {
 			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, l)
+		}
+	}
+}
+
+// TestPrettyOutputEmojiAlignment guards the reported bug: regional indicator
+// flags occupy two columns in total, and the heart symbol occupies one column
+// with or without its emoji variation selector. The expected widths are
+// measured independently of stringWidth, the code under test.
+func TestPrettyOutputEmojiAlignment(t *testing.T) {
+	r := resultWith(
+		Assumption{File: "flag.go", Line: 1, Message: "if x != nil { // 🇬🇧"},
+		Assumption{File: "heart.go", Line: 2, Message: "if x != nil { // ❤️"},
+	)
+
+	var buf bytes.Buffer
+	if err := (PrettyOutput{}).Output(&buf, r); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	var tableLines []string
+	for _, line := range lines {
+		if line == "" {
+			break
+		}
+		tableLines = append(tableLines, line)
+	}
+	if len(tableLines) != 6 {
+		t.Fatalf("expected 6 table lines, got %d:\n%s", len(tableLines), out)
+	}
+
+	// All other characters in this fixture are ASCII. Regional indicators
+	// each occupy one column; U+2764 occupies one column; U+FE0F occupies zero.
+	visualWidth := func(s string) int {
+		width := 0
+		for _, r := range s {
+			if r != 0xfe0f {
+				width++
+			}
+		}
+		return width
+	}
+
+	wantWidth := visualWidth(tableLines[0])
+	for i, line := range tableLines {
+		if got := visualWidth(line); got != wantWidth {
+			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, line)
 		}
 	}
 }
