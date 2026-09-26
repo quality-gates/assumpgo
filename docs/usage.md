@@ -38,7 +38,7 @@ Example:
 
 ```text
 $ assumpgo ./mypackage
-assumpgo analyser v0.1.7 by quality-gates
+assumpgo analyser v0.1.8 by quality-gates
 
 -------------------------------------------------
 | file        | line | message                  |
