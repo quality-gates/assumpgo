@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -2085,5 +2086,99 @@ func check() bool {
 
 	if got := result.AssumptionsCount(); got != 2 {
 		t.Errorf("AssumptionsCount() = %d, want 2; assumptions: %#v", got, result.Assumptions())
+	}
+}
+
+func TestAnalyserDoesNotBorrowConstantsFromBuildExcludedFiles(t *testing.T) {
+	otherOS := "windows"
+	if runtime.GOOS == "windows" {
+		otherOS = "linux"
+	}
+
+	dir := t.TempDir()
+	uses := filepath.Join(dir, "uses.go")
+
+	// A const that exists only in a file the current build excludes must not
+	// hide the var of the same name that the build does compile (issue #105).
+	excluded := map[string]string{
+		"enabled_tagged.go":          "//go:build " + otherOS + "\n\npackage p\n\nconst Enabled = true\n",
+		"enabled_" + otherOS + ".go": "package p\n\nconst SuffixReady = true\n",
+		"ignored.go":                 "//go:build ignore\n\npackage p\n\nconst IgnoredReady = true\n",
+		"plus.go":                    "// +build " + otherOS + "\n\npackage p\n\nconst PlusReady = true\n",
+		"bad.go":                     "//go:build (\n\npackage p\n\nconst BadReady = true\n",
+	}
+	for name, body := range excluded {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "enabled_var.go"), []byte("//go:build !"+otherOS+"\n\npackage p\n\nvar Enabled = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Constants in files the current build includes are still not assumptions,
+	// including a file selected by a matching build tag.
+	included := map[string]string{
+		"ready.go":     "package p\n\nconst Ready = true\n",
+		"tagged_in.go": "//go:build " + runtime.GOOS + "\n\npackage p\n\nconst TaggedReady = true\n",
+	}
+	for name, body := range included {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	code := `package p
+
+func check() bool {
+	if Enabled {
+		return true
+	}
+	if SuffixReady {
+		return true
+	}
+	if IgnoredReady {
+		return true
+	}
+	if PlusReady {
+		return true
+	}
+	if BadReady {
+		return true
+	}
+	if Ready {
+		return true
+	}
+	if TaggedReady {
+		return true
+	}
+	return false
+}
+`
+	if err := os.WriteFile(uses, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{uses})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+
+	if got := result.BoolExpressionsCount(); got != 7 {
+		t.Errorf("BoolExpressionsCount() = %d, want 7", got)
+	}
+	if got := result.AssumptionsCount(); got != 5 {
+		t.Fatalf("AssumptionsCount() = %d, want 5; assumptions: %#v", got, result.Assumptions())
+	}
+
+	want := []Assumption{
+		{File: uses, Line: 4, Message: "if Enabled {"},
+		{File: uses, Line: 7, Message: "if SuffixReady {"},
+		{File: uses, Line: 10, Message: "if IgnoredReady {"},
+		{File: uses, Line: 13, Message: "if PlusReady {"},
+		{File: uses, Line: 16, Message: "if BadReady {"},
+	}
+	if !reflect.DeepEqual(result.Assumptions(), want) {
+		t.Errorf("assumptions = %#v, want %#v", result.Assumptions(), want)
 	}
 }

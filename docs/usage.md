@@ -71,8 +71,11 @@ A boolean node is reported as an assumption when it is any of:
 A named constant used as a condition (`const Ready = true` … `if Ready {`) is
 deterministic, not a weak assumption, so it is **not** flagged. This holds
 whether the constant is declared in the same file or in another file of the
-same package — assumpgo indexes the package-level constants of every Go file
-in the directory alongside the file it is analysing.
+same package that the current build includes. assumpgo indexes the
+package-level constants of every Go file in the directory that matches the
+current build context (`GOOS`, `GOARCH`, and build tags). A `const` that exists
+only in a build-excluded file — for example `//go:build windows` or
+`*_windows.go` on another system — does not hide a bare-variable assumption.
 
 Chains of bare variables with no comparison anywhere — `x && y && z`,
 `x || y || z` — mix nothing and are **not** flagged. Extra variables on

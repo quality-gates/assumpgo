@@ -262,7 +262,7 @@ func newConstIndex() *constIndex {
 }
 
 // names returns the package-level constant names declared by any Go file in
-// dir that belongs to package pkg.
+// dir that belongs to package pkg and matches the current build context.
 func (c *constIndex) names(dir, pkg string) map[string]struct{} {
 	byPkg, scanned := c.dirs[dir]
 	if !scanned {
@@ -273,10 +273,11 @@ func (c *constIndex) names(dir, pkg string) map[string]struct{} {
 	return byPkg[pkg]
 }
 
-// scanDirConsts parses every Go file in dir and groups the package-level
-// constant names it declares by package name. Files that cannot be read or
-// parsed contribute nothing rather than failing the run: they are context for
-// the files actually being analysed, not targets themselves.
+// scanDirConsts parses every Go file in dir that matches the current build
+// context and groups the package-level constant names it declares by package
+// name. Files the build excludes, and files that cannot be read or parsed,
+// contribute nothing rather than failing the run: they are context for the
+// files actually being analysed, not targets themselves.
 func scanDirConsts(dir string) map[string]map[string]struct{} {
 	byPkg := make(map[string]map[string]struct{})
 
@@ -297,6 +298,10 @@ func scanDirConsts(dir string) map[string]map[string]struct{} {
 		path := filepath.Join(dir, entry.Name())
 		info, err := os.Stat(path)
 		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		match, err := matchGoFile(dir, entry.Name())
+		if err != nil || !match {
 			continue
 		}
 
