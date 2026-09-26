@@ -55,14 +55,40 @@ func (o PrettyOutput) Output(w io.Writer, result *Result) error {
 	return err
 }
 
+// escapeTerminalControls makes control characters visible in table cells so
+// source text cannot change the terminal state or layout. Tabs retain the
+// existing one-space rendering.
+func escapeTerminalControls(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r == '\t':
+			b.WriteByte(' ')
+		case unicode.IsControl(r):
+			switch {
+			case r <= 0xff:
+				fmt.Fprintf(&b, `\x%02x`, r)
+			case r <= 0xffff:
+				fmt.Fprintf(&b, `\u%04x`, r)
+			default:
+				fmt.Fprintf(&b, `\U%08x`, r)
+			}
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 func writeTable(w io.Writer, assumptions []Assumption) error {
 	headers := []string{"file", "line", "message"}
 	rows := make([][]string, 0, len(assumptions))
 	for _, a := range assumptions {
 		rows = append(rows, []string{
-			strings.ReplaceAll(a.File, "\t", " "),
+			escapeTerminalControls(a.File),
 			fmt.Sprintf("%d", a.Line),
-			strings.ReplaceAll(a.Message, "\t", " "),
+			escapeTerminalControls(a.Message),
 		})
 	}
 
