@@ -3,6 +3,7 @@ package assumpgo
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -752,5 +753,127 @@ func TestCollectGoFilesDirectFileKeepsDotAndUnderscorePrefixed(t *testing.T) {
 	}
 	if len(got) != 1 || got[0] != disabled {
 		t.Errorf("CollectGoFiles(%q) = %v, want [%q]", disabled, got, disabled)
+	}
+}
+
+func TestCollectGoFilesWalkSkipsBuildExcludedFiles(t *testing.T) {
+	root := t.TempDir()
+
+	otherOS := "windows"
+	if runtime.GOOS == "windows" {
+		otherOS = "linux"
+	}
+	otherArch := "386"
+	if runtime.GOARCH == "386" {
+		otherArch = "arm64"
+	}
+
+	files := map[string]string{
+		"keep.go":                                     "package p\n",
+		"sys_" + otherOS + ".go":                      "package p\n",
+		"sys_" + otherArch + ".go":                    "package p\n",
+		"sys_" + otherOS + "_" + otherArch + ".go":    "package p\n",
+		"skip_ignore.go":                              "//go:build ignore\n\npackage p\n",
+		"skip_plus_ignore.go":                         "// +build ignore\n\npackage p\n",
+		"skip_tag.go":                                 "//go:build customtag\n\npackage p\n",
+		filepath.Join("sub", "nested.go"):             "package p\n",
+		filepath.Join("sub", "nested_"+otherOS+".go"): "package p\n",
+		filepath.Join("sub", "nested_ignore.go"):      "//go:build ignore\n\npackage p\n",
+	}
+
+	for rel, content := range files {
+		abs := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, target := range []string{root, filepath.Join(root, "...")} {
+		got, err := CollectGoFiles(target)
+		if err != nil {
+			t.Fatalf("CollectGoFiles(%q): %v", target, err)
+		}
+		want := []string{
+			filepath.Join(root, "keep.go"),
+			filepath.Join(root, "sub", "nested.go"),
+		}
+		if len(got) != len(want) {
+			t.Errorf("CollectGoFiles(%q) = %v, want %v", target, got, want)
+		}
+	}
+}
+
+func TestCollectGoFilesDirectFileKeepsBuildExcludedFile(t *testing.T) {
+	root := t.TempDir()
+
+	otherOS := "windows"
+	if runtime.GOOS == "windows" {
+		otherOS = "linux"
+	}
+
+	excludedFiles := map[string]string{
+		"sys_" + otherOS + ".go": "package p\n",
+		"skip_ignore.go":         "//go:build ignore\n\npackage p\n",
+	}
+
+	for rel, content := range excludedFiles {
+		abs := filepath.Join(root, rel)
+		if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got, err := CollectGoFiles(abs)
+		if err != nil {
+			t.Fatalf("CollectGoFiles(%q): %v", abs, err)
+		}
+		if len(got) != 1 || got[0] != abs {
+			t.Errorf("CollectGoFiles(%q) = %v, want [%q]", abs, got, abs)
+		}
+	}
+}
+
+func TestCollectGoFilesWalkReturnsErrorOnInvalidBuildDirective(t *testing.T) {
+	root := t.TempDir()
+	bad := filepath.Join(root, "bad.go")
+	if err := os.WriteFile(bad, []byte("//go:build (\n\npackage p\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := CollectGoFiles(root)
+	if err == nil {
+		t.Fatalf("CollectGoFiles(%q) expected error for invalid build directive, got nil", root)
+	}
+}
+
+func TestMatchGoFile(t *testing.T) {
+	dir := t.TempDir()
+	matching := filepath.Join(dir, "match.go")
+	ignored := filepath.Join(dir, "ignore.go")
+	bad := filepath.Join(dir, "bad.go")
+
+	if err := os.WriteFile(matching, []byte("package p\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ignored, []byte("//go:build ignore\n\npackage p\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bad, []byte("//go:build (\n\npackage p\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := matchGoFile(dir, "match.go")
+	if err != nil || !m {
+		t.Errorf("matchGoFile(match.go) = %v, %v, want true, nil", m, err)
+	}
+
+	m, err = matchGoFile(dir, "ignore.go")
+	if err != nil || m {
+		t.Errorf("matchGoFile(ignore.go) = %v, %v, want false, nil", m, err)
+	}
+
+	m, err = matchGoFile(dir, "bad.go")
+	if err == nil {
+		t.Errorf("matchGoFile(bad.go) expected error, got %v, %v", m, err)
 	}
 }

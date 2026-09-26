@@ -58,9 +58,10 @@ found inside a walked tree; cyclic links are visited only once. Symlinks and har
 links to individual files are supported too, and aliases of the same file are
 deduplicated so each underlying file is analysed once. Only regular files are
 analysed; non-regular entries such as named pipes are skipped, even when their
-names end in `.go`. Files whose names begin with `.` or `_` are skipped during
-directory walks, matching Go's toolchain behavior; naming such a file directly
-still analyses it.
+names end in `.go`. Files whose names begin with `.` or `_`, or that are
+excluded by Go build constraints (such as `*_windows.go` on other systems or
+`//go:build ignore`), are skipped during directory walks, matching Go's toolchain
+behavior; naming such a file directly still analyses it.
 
 There is no ruleset file: the analyzer’s pattern set is fixed. See
 [docs/usage.md](docs/usage.md) for what counts as an assumption.
