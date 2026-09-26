@@ -353,6 +353,8 @@ func TestRuneWidth(t *testing.T) {
 		{0x1efff, 1},
 		{0x1f000, 2},
 		{'🚀', 2},
+		{0x1f1ec, 1}, // regional indicator: one column per flag letter
+		{0x2764, 1},  // heavy black heart is narrow despite the broad symbol range
 	}
 
 	for _, tt := range tests {
@@ -426,6 +428,9 @@ func TestStringWidth(t *testing.T) {
 		{"café ☕", 7}, // 4 (café) + 1 (space) + 2 (☕)
 		{"日本語", 6},
 		{"🚀 rocket", 9}, // 2 (🚀) + 1 (space) + 6 (rocket)
+		{"🇬🇧", 2},       // two one-column regional indicators
+		{"❤️", 1},       // narrow heart plus zero-width variation selector
+		{"☕️", 2},       // variation selector does not widen an already-wide symbol
 		{"\x00abc", 3},  // null byte is width 0
 
 		// Combining marks are zero terminal width: "e" + U+0301 renders as
@@ -620,6 +625,66 @@ func TestPrettyOutputZeroWidthFormatAlignment(t *testing.T) {
 		w := 0
 		for _, r := range s {
 			if r != 0x200b && r != 0xfeff {
+				w++
+			}
+		}
+		return w
+	}
+
+	// The border is pure ASCII, so its byte length is its display width.
+	wantWidth := len(tableLines[0])
+	for i, l := range tableLines {
+		if got := visualWidth(l); got != wantWidth {
+			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, l)
+		}
+	}
+}
+
+// TestPrettyOutputEmojiAlignment guards terminal-width handling for flag
+// regional indicators and the heart variation-selector sequence, while
+// keeping neighboring wide, combining, and emoji symbols aligned.
+func TestPrettyOutputEmojiAlignment(t *testing.T) {
+	r := resultWith(
+		Assumption{File: "flag.go", Line: 4, Message: "if x != nil { // 🇬🇧"},
+		Assumption{File: "heart.go", Line: 4, Message: "if x != nil { // ❤️"},
+		Assumption{File: "cjk.go", Line: 4, Message: "if x != nil { // 测试"},
+		Assumption{File: "combining.go", Line: 4, Message: "if x != nil { // café"},
+		Assumption{File: "coffee.go", Line: 4, Message: "if x != nil { // ☕"},
+		Assumption{File: "plain.go", Line: 9, Message: "if value != nil { // a substantially longer ASCII message"},
+	)
+
+	var buf bytes.Buffer
+	if err := (PrettyOutput{}).Output(&buf, r); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	var tableLines []string
+	for _, l := range lines {
+		if l == "" {
+			break
+		}
+		tableLines = append(tableLines, l)
+	}
+	if len(tableLines) != 10 {
+		// 1 border + header + 1 separator + 6 rows + 1 border
+		t.Fatalf("expected 10 table lines, got %d:\n%s", len(tableLines), out)
+	}
+
+	// Measure these known characters independently of stringWidth: each
+	// regional indicator and U+2764 occupies one column; VS16 and the combining
+	// acute accent occupy zero; CJK ideographs and the coffee emoji occupy two.
+	visualWidth := func(s string) int {
+		w := 0
+		for _, r := range s {
+			switch {
+			case r == 0xfe0f || r == 0x0301:
+			case r == 0x2764 || (r >= 0x1f1e6 && r <= 0x1f1ff):
+				w++
+			case r >= 0x2e80 && r <= 0xa4cf, r == '☕':
+				w += 2
+			default:
 				w++
 			}
 		}

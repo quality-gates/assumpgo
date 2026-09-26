@@ -152,6 +152,11 @@ func runeWidth(r rune) int {
 	if unicode.In(r, unicode.Mn, unicode.Me, unicode.Cf) {
 		return 0
 	}
+	// Regional indicators are one column each, so a flag pair occupies two
+	// columns. U+2764 is also narrow, despite falling in the broad symbol range.
+	if r == 0x2764 || (r >= 0x1f1e6 && r <= 0x1f1ff) {
+		return 1
+	}
 	for _, wr := range wideRanges {
 		if r >= wr.lo && r <= wr.hi {
 			return 2
