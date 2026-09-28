@@ -4,6 +4,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -27,6 +29,60 @@ func parseStmt(t *testing.T, src string) ast.Stmt {
 	}
 	body := f.Decls[0].(*ast.FuncDecl).Body
 	return body.List[0]
+}
+
+func TestDetectorUsesPackageResolverWhenClassifyingIdentifiers(t *testing.T) {
+	const source = `package p
+func check(value bool, n int) {
+	if Ready {}
+	if !Ready {}
+	if Ready && n == 1 {}
+	if value && n == 1 {}
+}
+func shadow(Ready bool) {
+	if Ready {}
+}`
+	path := filepath.Join(t.TempDir(), "uses.go")
+	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defs := filepath.Join(filepath.Dir(path), "defs.go")
+	if err := os.WriteFile(defs, []byte("package p\nconst Ready = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := parser.ParseFile(token.NewFileSet(), path, source, 0)
+	if err != nil {
+		t.Fatalf("parse source: %v", err)
+	}
+	statements := f.Decls[0].(*ast.FuncDecl).Body.List
+	shadowStatement := f.Decls[1].(*ast.FuncDecl).Body.List[0]
+
+	scope := identifierScope{
+		resolver: NewPackageResolver(),
+		filePath: path,
+		pkgName:  "p",
+	}
+	detector := NewDetector()
+
+	if detector.scan(statements[0], scope) {
+		t.Error("package constant used as a condition was classified as a variable")
+	}
+	if detector.scan(statements[1], scope) {
+		t.Error("boolean-not of a package constant was classified as a variable")
+	}
+	notExpr := statements[1].(*ast.IfStmt).Cond
+	if detector.isBoolExpression(notExpr, scope) {
+		t.Error("boolean-not of a package constant counted as a boolean expression")
+	}
+	if detector.scan(statements[2].(*ast.IfStmt).Cond, scope) {
+		t.Error("package constant plus comparison was classified as a variable/comparison mix")
+	}
+	if !detector.scan(statements[3].(*ast.IfStmt).Cond, scope) {
+		t.Error("ordinary variable plus comparison stopped being an assumption")
+	}
+	if !detector.scan(shadowStatement, scope) {
+		t.Error("local variable shadowing a package constant was classified as a constant")
+	}
 }
 
 func TestNewDetectorNotNil(t *testing.T) {

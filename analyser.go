@@ -83,8 +83,8 @@ func NewAnalyser(detector *Detector, excludes []string) *Analyser {
 
 // Analyse parses and inspects each file, returning the aggregated Result.
 func (a *Analyser) Analyse(files []string) (*Result, error) {
-	result := &Result{}
-	consts := newConstIndex()
+	resolver := NewPackageResolver()
+	var sourceFiles []parsedSource
 	var analysed []os.FileInfo
 
 	for _, file := range files {
@@ -93,22 +93,54 @@ func (a *Analyser) Analyse(files []string) (*Result, error) {
 			continue
 		}
 
-		info, err := os.Stat(clean)
-		if err == nil {
+		info, statErr := os.Stat(clean)
+		if statErr == nil {
 			if containsSameFile(analysed, info) {
 				continue
 			}
 		}
 
-		if err := a.analyseFile(clean, result, consts); err != nil {
+		source, err := readParsedSource(clean)
+		if err != nil {
 			return nil, err
 		}
-		if err == nil {
+		if statErr == nil {
 			analysed = append(analysed, info)
 		}
+		sourceFiles = append(sourceFiles, source)
+		resolver.addParsedFile(clean, source.file)
 	}
 
+	result := &Result{}
+	for _, source := range sourceFiles {
+		if err := a.analyseFile(source, result, resolver); err != nil {
+			return nil, err
+		}
+	}
 	return result, nil
+}
+
+type parsedSource struct {
+	path string
+	src  []byte
+	fset *token.FileSet
+	file *ast.File
+}
+
+func readParsedSource(path string) (parsedSource, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return parsedSource{}, err
+	}
+
+	fset := token.NewFileSet()
+	// Keep parser object resolution enabled for declarations within this file.
+	f, err := parser.ParseFile(fset, path, src, 0)
+	if err != nil {
+		return parsedSource{}, err
+	}
+
+	return parsedSource{path: path, src: src, fset: fset, file: f}, nil
 }
 
 func (a *Analyser) isExcluded(path string) bool {
@@ -125,32 +157,12 @@ func (a *Analyser) isExcluded(path string) bool {
 	return false
 }
 
-func (a *Analyser) analyseFile(path string, result *Result, consts *constIndex) error {
-	src, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-
-	fset := token.NewFileSet()
-	// Keep object resolution enabled so the detector can distinguish named
-	// constants from variables.
-	f, err := parser.ParseFile(fset, path, src, 0)
-	if err != nil {
-		return err
-	}
-
-	// Object resolution is per-file, so a constant declared in another file of
-	// the same package is left unresolved and would look like a variable
-	// (issue #58). Resolve those against the package's other files.
-	// Use the target's real directory so a file symlink cannot change its
-	// package context (issue #86).
-	constDir := filepath.Dir(path)
-	if resolved, err := filepath.EvalSymlinks(path); err == nil {
-		constDir = filepath.Dir(resolved)
-	}
-	resolvePackageConsts(f, consts.names(constDir, f.Name.Name))
-
-	lines := strings.Split(string(src), "\n")
+func (a *Analyser) analyseFile(source parsedSource, result *Result, resolver packageConstLookup) error {
+	path := source.path
+	fset := source.fset
+	f := source.file
+	lines := strings.Split(string(source.src), "\n")
+	scope := identifierScope{resolver: resolver, filePath: path, pkgName: f.Name.Name}
 
 	ignored := make(map[ast.Node]struct{})
 	ignoredAssumptions := make(map[ast.Node]struct{})
@@ -162,20 +174,20 @@ func (a *Analyser) analyseFile(path string, result *Result, consts *constIndex) 
 				ignored[cond] = struct{}{}
 				ignored[n.Cond] = struct{}{}
 			}
-			markCommaOkConditionNodes(n.Init, n.Cond, ignored, ignoredAssumptions)
+			markCommaOkConditionNodes(n.Init, n.Cond, ignored, ignoredAssumptions, scope)
 		case *ast.ForStmt:
 			if cond := a.detector.invertedCommaOkCond(n.Init, n.Cond); cond != nil {
 				ignored[cond] = struct{}{}
 				ignored[n.Cond] = struct{}{}
 			}
-			markCommaOkConditionNodes(n.Init, n.Cond, ignored, ignoredAssumptions)
+			markCommaOkConditionNodes(n.Init, n.Cond, ignored, ignoredAssumptions, scope)
 		}
 
 		if _, skip := ignored[node]; skip {
 			return true
 		}
 
-		if a.detector.IsBoolExpression(node) {
+		if a.detector.isBoolExpression(node, scope) {
 			result.increaseBoolExpressionsCount()
 		}
 
@@ -183,7 +195,7 @@ func (a *Analyser) analyseFile(path string, result *Result, consts *constIndex) 
 			return true
 		}
 
-		if a.detector.Scan(node) {
+		if a.detector.scan(node, scope) {
 			// Ignore //line directives: the message is read from this
 			// file, so the line must be physical (issue #87).
 			line := fset.PositionFor(node.Pos(), false).Line
@@ -221,7 +233,7 @@ func markNestedLogicalAssumptions(node ast.Node, ignoredAssumptions map[ast.Node
 	mark(binary.Y)
 }
 
-func markCommaOkConditionNodes(init ast.Stmt, cond ast.Expr, ignored, ignoredAssumptions map[ast.Node]struct{}) {
+func markCommaOkConditionNodes(init ast.Stmt, cond ast.Expr, ignored, ignoredAssumptions map[ast.Node]struct{}, scope identifierScope) {
 	okName := commaOkVarName(init)
 	if okName == "" || cond == nil {
 		return
@@ -234,7 +246,7 @@ func markCommaOkConditionNodes(init ast.Stmt, cond ast.Expr, ignored, ignoredAss
 		if isCommaOkNotNode(node, okName) {
 			ignored[node] = struct{}{}
 		}
-		if isCommaOkLogicalNode(node, okName) {
+		if isCommaOkLogicalNodeInScope(node, okName, scope) {
 			ignoredAssumptions[node] = struct{}{}
 		}
 		return true
@@ -247,112 +259,4 @@ func readLine(lines []string, line int) string {
 	}
 
 	return strings.ReplaceAll(strings.TrimSpace(lines[line-1]), "\t", " ")
-}
-
-// constIndex caches the package-level constant names declared in a directory,
-// keyed by directory and then by package name. A directory can hold more than
-// one package (a `_test` external test package alongside the package proper),
-// and a constant is only visible to files in its own package.
-type constIndex struct {
-	dirs map[string]map[string]map[string]struct{}
-}
-
-func newConstIndex() *constIndex {
-	return &constIndex{dirs: make(map[string]map[string]map[string]struct{})}
-}
-
-// names returns the package-level constant names declared by any Go file in
-// dir that belongs to package pkg and matches the current build context.
-func (c *constIndex) names(dir, pkg string) map[string]struct{} {
-	byPkg, scanned := c.dirs[dir]
-	if !scanned {
-		byPkg = scanDirConsts(dir)
-		c.dirs[dir] = byPkg
-	}
-
-	return byPkg[pkg]
-}
-
-// scanDirConsts parses every Go file in dir that matches the current build
-// context and groups the package-level constant names it declares by package
-// name. Files the build excludes, and files that cannot be read or parsed,
-// contribute nothing rather than failing the run: they are context for the
-// files actually being analysed, not targets themselves.
-func scanDirConsts(dir string) map[string]map[string]struct{} {
-	byPkg := make(map[string]map[string]struct{})
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return byPkg
-	}
-
-	fset := token.NewFileSet()
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
-			continue
-		}
-		if ignoredGoFile(entry.Name()) {
-			continue
-		}
-
-		path := filepath.Join(dir, entry.Name())
-		info, err := os.Stat(path)
-		if err != nil || !info.Mode().IsRegular() {
-			continue
-		}
-		match, err := matchGoFile(dir, entry.Name())
-		if err != nil || !match {
-			continue
-		}
-
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			continue
-		}
-
-		set, ok := byPkg[f.Name.Name]
-		if !ok {
-			set = make(map[string]struct{})
-			byPkg[f.Name.Name] = set
-		}
-		collectConstNames(f, set)
-	}
-
-	return byPkg
-}
-
-// collectConstNames adds every package-level constant name declared by f to
-// set. Only top-level declarations are package-level; a constant declared
-// inside a function is resolved by the parser already.
-func collectConstNames(f *ast.File, set map[string]struct{}) {
-	for _, decl := range f.Decls {
-		gen, ok := decl.(*ast.GenDecl)
-		if !ok || gen.Tok != token.CONST {
-			continue
-		}
-
-		for _, spec := range gen.Specs {
-			value, ok := spec.(*ast.ValueSpec)
-			if !ok {
-				continue
-			}
-
-			for _, name := range value.Names {
-				set[name.Name] = struct{}{}
-			}
-		}
-	}
-}
-
-// resolvePackageConsts attaches a constant object to each unresolved
-// identifier whose name is a package-level constant, so the detector sees it
-// as a constant rather than a bare variable. Identifiers the parser already
-// resolved (locals, same-file declarations) are absent from f.Unresolved and
-// are left untouched.
-func resolvePackageConsts(f *ast.File, names map[string]struct{}) {
-	for _, ident := range f.Unresolved {
-		if _, isConst := names[ident.Name]; isConst {
-			ident.Obj = ast.NewObj(ast.Con, ident.Name)
-		}
-	}
 }
