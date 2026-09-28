@@ -21,6 +21,16 @@ import (
 //     the blog post) and IS flagged.
 type Detector struct{}
 
+type identifierScope struct {
+	resolver packageConstLookup
+	filePath string
+	pkgName  string
+}
+
+func (s identifierScope) isPackageConst(name string) bool {
+	return s.resolver != nil && s.resolver.IsPackageConst(s.filePath, s.pkgName, name)
+}
+
 // NewDetector returns a ready to use Detector.
 func NewDetector() *Detector {
 	return &Detector{}
@@ -28,12 +38,16 @@ func NewDetector() *Detector {
 
 // Scan reports whether node is a weak assumption.
 func (d *Detector) Scan(node ast.Node) bool {
+	return d.scan(node, identifierScope{})
+}
+
+func (d *Detector) scan(node ast.Node, scope identifierScope) bool {
 	switch n := node.(type) {
 	case *ast.BinaryExpr:
 		// `&&` / `||` that mixes a bare variable with a comparison, e.g.
 		// `x && x == "test"` or `x && y && n == 1`.
 		if n.Op == token.LAND || n.Op == token.LOR {
-			return d.bidirectionalCheck(n)
+			return d.bidirectionalCheck(n, scope)
 		}
 		// A negative comparison, e.g. `x != nil`. Mirrors PHP's NotEqual /
 		// NotIdentical. The strict-positive `==` is treated as an assertion.
@@ -42,7 +56,7 @@ func (d *Detector) Scan(node ast.Node) bool {
 		}
 	}
 
-	return d.isVariableExpression(node)
+	return d.isVariableExpression(node, scope)
 }
 
 // IsBoolExpression reports whether node contributes to the boolean expression
@@ -55,6 +69,10 @@ func (d *Detector) Scan(node ast.Node) bool {
 // within 0–100 (issue #34). A negative comparison or boolean-not outside an
 // if/for/&&/|| context is still a boolean expression in its own right.
 func (d *Detector) IsBoolExpression(node ast.Node) bool {
+	return d.isBoolExpression(node, identifierScope{})
+}
+
+func (d *Detector) isBoolExpression(node ast.Node, scope identifierScope) bool {
 	switch n := node.(type) {
 	case *ast.IfStmt:
 		return true
@@ -64,7 +82,7 @@ func (d *Detector) IsBoolExpression(node ast.Node) bool {
 	case *ast.BinaryExpr:
 		return n.Op == token.LAND || n.Op == token.LOR || n.Op == token.NEQ
 	case *ast.UnaryExpr:
-		return n.Op == token.NOT && isVarIdent(n.X)
+		return n.Op == token.NOT && isVarIdentInScope(n.X, scope)
 	}
 
 	return false
@@ -72,16 +90,16 @@ func (d *Detector) IsBoolExpression(node ast.Node) bool {
 
 // isVariableExpression covers the cases where a bare variable is (ab)used as a
 // boolean: `!x`, `if x`, `for x`.
-func (d *Detector) isVariableExpression(node ast.Node) bool {
+func (d *Detector) isVariableExpression(node ast.Node, scope identifierScope) bool {
 	switch n := node.(type) {
 	case *ast.UnaryExpr:
-		if n.Op == token.NOT && isVarIdent(n.X) {
+		if n.Op == token.NOT && isVarIdentInScope(n.X, scope) {
 			return true
 		}
 	case *ast.IfStmt:
-		return isBareVariableCond(n.Init, n.Cond)
+		return isBareVariableCond(n.Init, n.Cond, scope)
 	case *ast.ForStmt:
-		return isBareVariableCond(n.Init, n.Cond)
+		return isBareVariableCond(n.Init, n.Cond, scope)
 	}
 
 	return false
@@ -92,24 +110,24 @@ func (d *Detector) isVariableExpression(node ast.Node) bool {
 // but walks the whole tree so left-associative grouping cannot hide a mix
 // (`x && y && n == 1` parses as `(x && y) && (n == 1)`). A chain of only
 // variables contains no comparison and is not a mix.
-func (d *Detector) bidirectionalCheck(n *ast.BinaryExpr) bool {
-	hasVar, hasCmp := logicalMix(n)
+func (d *Detector) bidirectionalCheck(n *ast.BinaryExpr, scope identifierScope) bool {
+	hasVar, hasCmp := logicalMix(n, scope)
 	return hasVar && hasCmp
 }
 
 // logicalMix walks a `&&`/`||` tree and reports whether it contains a bare
 // variable operand and a non-logical binary operand (a comparison).
-func logicalMix(expr ast.Node) (hasVar, hasCmp bool) {
+func logicalMix(expr ast.Node, scope identifierScope) (hasVar, hasCmp bool) {
 	switch e := unwrap(expr).(type) {
 	case *ast.Ident:
-		return isVarIdent(e), false
+		return isVarIdentInScope(e, scope), false
 	case *ast.BinaryExpr:
 		if e.Op != token.LAND && e.Op != token.LOR {
 			return false, true
 		}
 
-		v1, c1 := logicalMix(e.X)
-		v2, c2 := logicalMix(e.Y)
+		v1, c1 := logicalMix(e.X, scope)
+		v2, c2 := logicalMix(e.Y, scope)
 		return v1 || v2, c1 || c2
 	}
 
@@ -120,6 +138,10 @@ func logicalMix(expr ast.Node) (hasVar, hasCmp bool) {
 // variable, excluding predeclared literals and resolved named constants (the
 // Go analog of PHP distinguishing a Variable from a ConstFetch).
 func isVarIdent(expr ast.Node) bool {
+	return isVarIdentInScope(expr, identifierScope{})
+}
+
+func isVarIdentInScope(expr ast.Node, scope identifierScope) bool {
 	ident, ok := unwrap(expr).(*ast.Ident)
 	if !ok {
 		return false
@@ -130,6 +152,9 @@ func isVarIdent(expr ast.Node) bool {
 		return false
 	}
 	if ident.Obj != nil && ident.Obj.Kind == ast.Con {
+		return false
+	}
+	if ident.Obj == nil && scope.isPackageConst(ident.Name) {
 		return false
 	}
 
@@ -149,8 +174,8 @@ func unwrap(node ast.Node) ast.Node {
 
 // isBareVariableCond reports whether cond is a bare variable condition that is
 // not bound by a comma-ok assignment in init.
-func isBareVariableCond(init ast.Stmt, cond ast.Expr) bool {
-	if !isVarIdent(cond) {
+func isBareVariableCond(init ast.Stmt, cond ast.Expr, scope identifierScope) bool {
+	if !isVarIdentInScope(cond, scope) {
 		return false
 	}
 
@@ -190,32 +215,36 @@ func isCommaOkNotNode(node ast.Node, okName string) bool {
 // isCommaOkLogicalNode reports whether node is a logical expression whose
 // variable-plus-binary assumption comes only from the comma-ok ok variable.
 func isCommaOkLogicalNode(node ast.Node, okName string) bool {
+	return isCommaOkLogicalNodeInScope(node, okName, identifierScope{})
+}
+
+func isCommaOkLogicalNodeInScope(node ast.Node, okName string, scope identifierScope) bool {
 	binary, ok := node.(*ast.BinaryExpr)
 	if !ok || (binary.Op != token.LAND && binary.Op != token.LOR) {
 		return false
 	}
 
-	hasOk, hasOtherVar, hasBinary := commaOkLogicalMix(binary, okName)
+	hasOk, hasOtherVar, hasBinary := commaOkLogicalMix(binary, okName, scope)
 	return hasOk && hasBinary && !hasOtherVar
 }
 
 // commaOkLogicalMix classifies a logical expression without descending into
 // non-logical binary expressions. Identifiers inside comparisons are operands
 // of the assertion, not bare-variable conditions of their own.
-func commaOkLogicalMix(expr ast.Node, okName string) (hasOk, hasOtherVar, hasBinary bool) {
+func commaOkLogicalMix(expr ast.Node, okName string, scope identifierScope) (hasOk, hasOtherVar, hasBinary bool) {
 	switch e := unwrap(expr).(type) {
 	case *ast.Ident:
 		if isNamedVar(e, okName) {
 			return true, false, false
 		}
-		return false, isVarIdent(e), false
+		return false, isVarIdentInScope(e, scope), false
 	case *ast.BinaryExpr:
 		if e.Op != token.LAND && e.Op != token.LOR {
 			return false, false, true
 		}
 
-		ok1, var1, binary1 := commaOkLogicalMix(e.X, okName)
-		ok2, var2, binary2 := commaOkLogicalMix(e.Y, okName)
+		ok1, var1, binary1 := commaOkLogicalMix(e.X, okName, scope)
+		ok2, var2, binary2 := commaOkLogicalMix(e.Y, okName, scope)
 		return ok1 || ok2, var1 || var2, binary1 || binary2
 	}
 

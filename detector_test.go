@@ -29,6 +29,58 @@ func parseStmt(t *testing.T, src string) ast.Stmt {
 	return body.List[0]
 }
 
+type packageConstLookupFunc func(filePath, pkgName, identName string) bool
+
+func (f packageConstLookupFunc) IsPackageConst(filePath, pkgName, identName string) bool {
+	return f(filePath, pkgName, identName)
+}
+
+func TestDetectorUsesPackageResolverWhenClassifyingIdentifiers(t *testing.T) {
+	const source = `package p
+func check(value bool, n int) {
+	if Ready {}
+	if !Ready {}
+	if Ready && n == 1 {}
+	if value && n == 1 {}
+}`
+	f, err := parser.ParseFile(token.NewFileSet(), "uses.go", source, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parse source: %v", err)
+	}
+	statements := f.Decls[0].(*ast.FuncDecl).Body.List
+
+	const path = "/pkg/uses.go"
+	const packageName = "p"
+	scope := identifierScope{
+		resolver: packageConstLookupFunc(func(filePath, pkgName, identName string) bool {
+			if filePath != path || pkgName != packageName {
+				t.Errorf("resolver query = (%q, %q, %q), want file %q and package %q", filePath, pkgName, identName, path, packageName)
+			}
+			return identName == "Ready"
+		}),
+		filePath: path,
+		pkgName:  packageName,
+	}
+	detector := NewDetector()
+
+	if detector.scan(statements[0], scope) {
+		t.Error("package constant used as a condition was classified as a variable")
+	}
+	if detector.scan(statements[1], scope) {
+		t.Error("boolean-not of a package constant was classified as a variable")
+	}
+	notExpr := statements[1].(*ast.IfStmt).Cond
+	if detector.isBoolExpression(notExpr, scope) {
+		t.Error("boolean-not of a package constant counted as a boolean expression")
+	}
+	if detector.scan(statements[2].(*ast.IfStmt).Cond, scope) {
+		t.Error("package constant plus comparison was classified as a variable/comparison mix")
+	}
+	if !detector.scan(statements[3].(*ast.IfStmt).Cond, scope) {
+		t.Error("ordinary variable plus comparison stopped being an assumption")
+	}
+}
+
 func TestNewDetectorNotNil(t *testing.T) {
 	if NewDetector() == nil {
 		t.Fatal("NewDetector() returned nil")
