@@ -4,6 +4,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -29,12 +31,6 @@ func parseStmt(t *testing.T, src string) ast.Stmt {
 	return body.List[0]
 }
 
-type packageConstLookupFunc func(filePath, pkgName, identName string) bool
-
-func (f packageConstLookupFunc) IsPackageConst(filePath, pkgName, identName string) bool {
-	return f(filePath, pkgName, identName)
-}
-
 func TestDetectorUsesPackageResolverWhenClassifyingIdentifiers(t *testing.T) {
 	const source = `package p
 func check(value bool, n int) {
@@ -42,24 +38,29 @@ func check(value bool, n int) {
 	if !Ready {}
 	if Ready && n == 1 {}
 	if value && n == 1 {}
+}
+func shadow(Ready bool) {
+	if Ready {}
 }`
-	f, err := parser.ParseFile(token.NewFileSet(), "uses.go", source, parser.SkipObjectResolution)
+	path := filepath.Join(t.TempDir(), "uses.go")
+	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defs := filepath.Join(filepath.Dir(path), "defs.go")
+	if err := os.WriteFile(defs, []byte("package p\nconst Ready = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := parser.ParseFile(token.NewFileSet(), path, source, 0)
 	if err != nil {
 		t.Fatalf("parse source: %v", err)
 	}
 	statements := f.Decls[0].(*ast.FuncDecl).Body.List
+	shadowStatement := f.Decls[1].(*ast.FuncDecl).Body.List[0]
 
-	const path = "/pkg/uses.go"
-	const packageName = "p"
 	scope := identifierScope{
-		resolver: packageConstLookupFunc(func(filePath, pkgName, identName string) bool {
-			if filePath != path || pkgName != packageName {
-				t.Errorf("resolver query = (%q, %q, %q), want file %q and package %q", filePath, pkgName, identName, path, packageName)
-			}
-			return identName == "Ready"
-		}),
+		resolver: NewPackageResolver(),
 		filePath: path,
-		pkgName:  packageName,
+		pkgName:  "p",
 	}
 	detector := NewDetector()
 
@@ -78,6 +79,9 @@ func check(value bool, n int) {
 	}
 	if !detector.scan(statements[3].(*ast.IfStmt).Cond, scope) {
 		t.Error("ordinary variable plus comparison stopped being an assumption")
+	}
+	if !detector.scan(shadowStatement, scope) {
+		t.Error("local variable shadowing a package constant was classified as a constant")
 	}
 }
 

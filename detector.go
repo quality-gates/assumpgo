@@ -151,10 +151,13 @@ func isVarIdentInScope(expr ast.Node, scope identifierScope) bool {
 	case "true", "false", "nil", "iota":
 		return false
 	}
-	if ident.Obj != nil && ident.Obj.Kind == ast.Con {
+	if ident.Obj != nil && ident.Obj.Kind == ast.Var {
+		return true
+	}
+	if scope.isPackageConst(ident.Name) {
 		return false
 	}
-	if ident.Obj == nil && scope.isPackageConst(ident.Name) {
+	if ident.Obj != nil && ident.Obj.Kind == ast.Con {
 		return false
 	}
 
