@@ -153,10 +153,45 @@ func writeTable(w io.Writer, assumptions []Assumption) error {
 // individually rather than as the single span 0x2e80..0xffef they replace:
 // that span also swallowed narrow blocks such as Alphabetic Presentation Forms
 // (Latin ligatures like \ufb01) and the Halfwidth Forms at 0xff61..0xffdc,
-// which are one column each.
+// which are one column each. The symbol blocks from Miscellaneous Technical
+// through Miscellaneous Symbols and Arrows (0x2300..0x2bff) are mostly narrow,
+// so only their East Asian Wide code points are listed.
 var wideRanges = [...]struct{ lo, hi rune }{
 	{0x1100, 0x11ff},    // Hangul Jamo
-	{0x2600, 0x27bf},    // Misc Symbols and Dingbats
+	{0x231a, 0x231b},    // watch, hourglass
+	{0x2329, 0x232a},    // angle brackets
+	{0x23e9, 0x23ec},    // double triangles
+	{0x23f0, 0x23f0},    // alarm clock
+	{0x23f3, 0x23f3},    // hourglass with flowing sand
+	{0x25fd, 0x25fe},    // medium small squares
+	{0x2614, 0x2615},    // umbrella with rain, hot beverage
+	{0x2648, 0x2653},    // zodiac signs
+	{0x267f, 0x267f},    // wheelchair
+	{0x2693, 0x2693},    // anchor
+	{0x26a1, 0x26a1},    // high voltage
+	{0x26aa, 0x26ab},    // medium circles
+	{0x26bd, 0x26be},    // soccer ball, baseball
+	{0x26c4, 0x26c5},    // snowman without snow, sun behind cloud
+	{0x26ce, 0x26ce},    // ophiuchus
+	{0x26d4, 0x26d4},    // no entry
+	{0x26ea, 0x26ea},    // church
+	{0x26f2, 0x26f3},    // fountain, flag in hole
+	{0x26f5, 0x26f5},    // sailboat
+	{0x26fa, 0x26fa},    // tent
+	{0x26fd, 0x26fd},    // fuel pump
+	{0x2705, 0x2705},    // check mark button
+	{0x270a, 0x270b},    // raised fist, raised hand
+	{0x2728, 0x2728},    // sparkles
+	{0x274c, 0x274c},    // cross mark
+	{0x274e, 0x274e},    // cross mark button
+	{0x2753, 0x2755},    // question and exclamation ornaments
+	{0x2757, 0x2757},    // heavy exclamation mark
+	{0x2795, 0x2797},    // heavy plus, minus, division
+	{0x27b0, 0x27b0},    // curly loop
+	{0x27bf, 0x27bf},    // double curly loop
+	{0x2b1b, 0x2b1c},    // large squares
+	{0x2b50, 0x2b50},    // star
+	{0x2b55, 0x2b55},    // heavy large circle
 	{0x2e80, 0xa4cf},    // CJK radicals through Yi
 	{0xac00, 0xd7af},    // Hangul syllables
 	{0xf900, 0xfaff},    // CJK compatibility ideographs
@@ -180,10 +215,6 @@ func runeWidth(r rune) int {
 	}
 	// Regional indicators occupy one column each, so a flag pair occupies two.
 	if r >= 0x1f1e6 && r <= 0x1f1ff {
-		return 1
-	}
-	// U+2764 is narrow even though the enclosing Misc Symbols range is wide.
-	if r == 0x2764 {
 		return 1
 	}
 	for _, wr := range wideRanges {
