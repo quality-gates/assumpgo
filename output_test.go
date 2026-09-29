@@ -360,10 +360,15 @@ func TestRuneWidth(t *testing.T) {
 		{0x11ff, 2},
 		{0x1200, 1},
 
-		// Misc Symbols and Dingbats boundaries (including ☕ = 0x2615)
-		{0x25ff, 1},
-		{0x2600, 2},
-		{0x2615, 2},
+		// Symbol blocks: only East Asian Wide code points are 2 columns
+		// (TestRuneWidthSymbolBlocks covers every one of them)
+		{0x231a, 2}, // ⌚ watch
+		{0x2b50, 2}, // ⭐ star
+		{0x2600, 1}, // ☀ sun
+		{0x2602, 1}, // ☂ umbrella
+		{0x2603, 1}, // ☃ snowman
+		{0x2615, 2}, // ☕ hot beverage
+		{0x2764, 1}, // ❤ heavy black heart
 		{0x27bf, 2},
 		{0x27c0, 1},
 
@@ -731,6 +736,84 @@ func TestPrettyOutputEmojiAlignment(t *testing.T) {
 	for i, line := range tableLines {
 		if got := visualWidth(line); got != wantWidth {
 			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, line)
+		}
+	}
+}
+
+// TestPrettyOutputSymbolAlignment guards the reported bug: the watch (U+231A)
+// and star (U+2B50) occupy two columns, while sun, umbrella, and snowman
+// (U+2600, U+2602, U+2603) occupy one, matching libc wcswidth. The expected
+// widths are measured independently of stringWidth, the code under test.
+func TestPrettyOutputSymbolAlignment(t *testing.T) {
+	r := resultWith(
+		Assumption{File: "watch.go", Line: 1, Message: "if x != 0 { // ⌚"},
+		Assumption{File: "star.go", Line: 2, Message: "if x != 0 { // ⭐"},
+		Assumption{File: "sun.go", Line: 3, Message: "if x != 0 { // ☀"},
+		Assumption{File: "umbrella.go", Line: 4, Message: "if x != 0 { // ☂"},
+		Assumption{File: "snowman.go", Line: 5, Message: "if x != 0 { // ☃"},
+	)
+
+	var buf bytes.Buffer
+	if err := (PrettyOutput{}).Output(&buf, r); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	var tableLines []string
+	for _, line := range lines {
+		if line == "" {
+			break
+		}
+		tableLines = append(tableLines, line)
+	}
+	if len(tableLines) != 9 {
+		// 1 border + header + 1 separator + 5 rows + 1 border
+		t.Fatalf("expected 9 table lines, got %d:\n%s", len(tableLines), out)
+	}
+
+	// All other characters in this fixture are ASCII, one column each.
+	visualWidth := func(s string) int {
+		width := 0
+		for _, r := range s {
+			if r == 0x231a || r == 0x2b50 {
+				width += 2
+			} else {
+				width++
+			}
+		}
+		return width
+	}
+
+	// The border is pure ASCII, so its byte length is its display width.
+	wantWidth := len(tableLines[0])
+	for i, line := range tableLines {
+		if got := visualWidth(line); got != wantWidth {
+			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, line)
+		}
+	}
+}
+
+// TestRuneWidthSymbolBlocks checks every code point from Miscellaneous
+// Technical through Miscellaneous Symbols and Arrows against libc wcwidth:
+// exactly the East Asian Wide symbols listed here occupy two columns and every
+// other code point in the span occupies one.
+func TestRuneWidthSymbolBlocks(t *testing.T) {
+	wide := map[rune]bool{}
+	for _, r := range "⌚⌛\u2329\u232a⏩⏪⏫⏬⏰⏳◽◾☔☕♈♉♊♋♌♍♎♏♐♑♒♓♿⚓⚡⚪⚫⚽⚾⛄⛅⛎⛔⛪⛲⛳⛵⛺⛽✅✊✋✨❌❎❓❔❕❗➕➖➗➰➿⬛⬜⭐⭕" {
+		wide[r] = true
+	}
+	if len(wide) != 62 {
+		t.Fatalf("wide symbol fixture has %d code points, want 62", len(wide))
+	}
+
+	for r := rune(0x2300); r <= 0x2bff; r++ {
+		want := 1
+		if wide[r] {
+			want = 2
+		}
+		if got := runeWidth(r); got != want {
+			t.Errorf("runeWidth(%#x / %q) = %d, want %d", r, r, got, want)
 		}
 	}
 }
