@@ -357,7 +357,9 @@ func TestRuneWidth(t *testing.T) {
 		// Hangul Jamo boundaries
 		{0x10ff, 1},
 		{0x1100, 2},
-		{0x11ff, 2},
+		{0x115f, 2}, // last leading consonant
+		{0x1160, 0}, // medial vowels and final consonants conjoin
+		{0x11ff, 0},
 		{0x1200, 1},
 
 		// Symbol blocks: only East Asian Wide code points are 2 columns
@@ -399,13 +401,15 @@ func TestRuneWidth(t *testing.T) {
 		{'ｶ', 1},    // halfwidth Katakana
 		{0xffdc, 1},
 		{0xffe0, 2}, // fullwidth cent sign
-		{0xffee, 2},
+		{0xffe6, 2},
+		{0xffe8, 1}, // halfwidth forms light vertical
+		{0xffee, 1},
 		{0xffef, 1}, // unassigned, beyond the fullwidth signs
 		{0xfff0, 1},
 
 		// Emojis (SMP >= 0x1f000)
 		{0x1efff, 1},
-		{0x1f000, 2},
+		{0x1f004, 2}, // 🀄 mahjong red dragon
 		{'🚀', 2},
 	}
 
@@ -814,6 +818,189 @@ func TestRuneWidthSymbolBlocks(t *testing.T) {
 		}
 		if got := runeWidth(r); got != want {
 			t.Errorf("runeWidth(%#x / %q) = %d, want %d", r, r, got, want)
+		}
+	}
+}
+
+// TestRuneWidthLibcRanges pins runeWidth to libc wcwidth for the ranges
+// reported in issue #119, with a neighbour on each side of every boundary.
+func TestRuneWidthLibcRanges(t *testing.T) {
+	tests := []struct {
+		r    rune
+		want int
+	}{
+		// Spacing combining marks (Mc) are zero columns
+		{0x0903, 0}, // Devanagari sign visarga
+		{0x0904, 1}, // Devanagari letter short a
+		{0x093d, 1}, // Devanagari sign avagraha
+		{0x093e, 0}, // Devanagari vowel sign aa
+		{0x0940, 0},
+		{0x102a, 1}, // Myanmar letter au
+		{0x102b, 0}, // Myanmar vowel sign tall aa
+		{0x102c, 0},
+
+		// Line and paragraph separators are zero columns
+		{0x2027, 1},
+		{0x2028, 0},
+		{0x2029, 0},
+
+		// Narrow code points inside the CJK span
+		{0x302d, 0}, // ideographic entering tone mark (Mn)
+		{0x302e, 2}, // Hangul single dot tone mark: Mc, but wide
+		{0x303e, 2},
+		{0x303f, 1}, // ideographic half fill space
+		{0x3041, 2},
+		{0x3247, 2},
+		{0x3248, 1}, // circled number ten on black square
+		{0x324f, 1},
+		{0x3250, 2},
+		{0x4dbf, 2},
+		{0x4dc0, 1}, // ䷀ Yijing hexagram
+		{0x4dff, 1},
+		{0x4e00, 2},
+
+		// Wide blocks outside the CJK span
+		{0xa95f, 1},
+		{0xa960, 2}, // Hangul Jamo Extended-A
+		{0xa97c, 2},
+		{0xfe50, 2}, // small form variants
+		{0xfe6b, 2},
+		{0xfe70, 1}, // Arabic presentation forms
+		{0x16fe0, 2},
+		{0x16fe3, 2},
+		{0x16fe4, 0}, // Khitan filler (Mn)
+		{0x16ff0, 2}, // Vietnamese reading mark: Mc, but inside a wide range
+		{0x17000, 2}, // Tangut
+		{0x18d08, 2},
+		{0x1aff0, 2}, // Kana Extended-B
+		{0x1b2fb, 2},
+		{0x1bc00, 1}, // Duployan
+
+		// SMP symbols: only the East Asian Wide ones are 2 columns
+		{0x1f000, 1}, // 🀀 mahjong east wind
+		{0x1f003, 1},
+		{0x1f005, 1},
+		{0x1f0a1, 1}, // 🂡 playing card
+		{0x1f0ce, 1},
+		{0x1f0cf, 2}, // 🃏 joker
+		{0x1f0d1, 1},
+		{0x1f100, 1}, // enclosed alphanumerics
+		{0x1f18d, 1},
+		{0x1f18e, 2}, // 🆎
+		{0x1f18f, 1},
+		{0x1f191, 2},
+		{0x1f19a, 2},
+		{0x1f19b, 1},
+		{0x1f1ad, 1},
+		{0x1f200, 2},
+		{0x1f320, 2},
+		{0x1f321, 1}, // 🌡 thermometer
+		{0x1f32c, 1},
+		{0x1f32d, 2},
+		{0x1f600, 2}, // 😀
+		{0x1f64f, 2},
+		{0x1f650, 1},
+		{0x1f67f, 1},
+		{0x1f680, 2},
+		{0x1faf8, 2},
+		{0x1fbf9, 1},
+
+		// Supplementary and Tertiary Ideographic Planes stay wide
+		{0x20000, 2},
+		{0x2fffd, 2},
+		{0x30000, 2},
+		{0x3fffd, 2},
+		{0x3fffe, 1},
+	}
+
+	for _, tt := range tests {
+		if got := runeWidth(tt.r); got != tt.want {
+			t.Errorf("runeWidth(%#x / %q) = %d, want %d", tt.r, tt.r, got, tt.want)
+		}
+	}
+}
+
+// TestPrettyOutputLibcNarrowAlignment guards issue #119: a Yijing hexagram
+// (U+4DC0) and a thermometer (U+1F321) occupy one column each, matching libc
+// wcswidth. The expected widths are measured independently of stringWidth,
+// the code under test.
+func TestPrettyOutputLibcNarrowAlignment(t *testing.T) {
+	r := resultWith(
+		Assumption{File: "hexagram.go", Line: 1, Message: "if x != 0 { // ䷀䷀"},
+		Assumption{File: "thermometer.go", Line: 2, Message: "if x != 0 { // 🌡"},
+	)
+
+	var buf bytes.Buffer
+	if err := (PrettyOutput{}).Output(&buf, r); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	var tableLines []string
+	for _, line := range lines {
+		if line == "" {
+			break
+		}
+		tableLines = append(tableLines, line)
+	}
+	if len(tableLines) != 6 {
+		// 1 border + header + 1 separator + 2 rows + 1 border
+		t.Fatalf("expected 6 table lines, got %d:\n%s", len(tableLines), out)
+	}
+
+	// Every character in this fixture occupies one column.
+	visualWidth := func(s string) int {
+		return len([]rune(s))
+	}
+
+	// The border is pure ASCII, so its byte length is its display width.
+	wantWidth := len(tableLines[0])
+	for i, line := range tableLines {
+		if got := visualWidth(line); got != wantWidth {
+			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, line)
+		}
+	}
+}
+
+// TestRuneWidthWideRangeBoundaries pins both ends of every range libc wcwidth
+// (macOS, en_US.UTF-8) reports as two columns, and the code point just outside
+// each end, which must not be two columns. The ranges are listed here
+// independently of wideRanges, the table under test.
+func TestRuneWidthWideRangeBoundaries(t *testing.T) {
+	ranges := []struct{ lo, hi rune }{
+		{0x1100, 0x115f}, {0x231a, 0x231b}, {0x2329, 0x232a}, {0x23e9, 0x23ec},
+		{0x23f0, 0x23f0}, {0x23f3, 0x23f3}, {0x25fd, 0x25fe}, {0x2614, 0x2615},
+		{0x2648, 0x2653}, {0x267f, 0x267f}, {0x2693, 0x2693}, {0x26a1, 0x26a1},
+		{0x26aa, 0x26ab}, {0x26bd, 0x26be}, {0x26c4, 0x26c5}, {0x26ce, 0x26ce},
+		{0x26d4, 0x26d4}, {0x26ea, 0x26ea}, {0x26f2, 0x26f3}, {0x26f5, 0x26f5},
+		{0x26fa, 0x26fa}, {0x26fd, 0x26fd}, {0x2705, 0x2705}, {0x270a, 0x270b},
+		{0x2728, 0x2728}, {0x274c, 0x274c}, {0x274e, 0x274e}, {0x2753, 0x2755},
+		{0x2757, 0x2757}, {0x2795, 0x2797}, {0x27b0, 0x27b0}, {0x27bf, 0x27bf},
+		{0x2b1b, 0x2b1c}, {0x2b50, 0x2b50}, {0x2b55, 0x2b55}, {0x2e80, 0x303e},
+		{0x3041, 0x3247}, {0x3250, 0x4dbf}, {0x4e00, 0xa4cf}, {0xa960, 0xa97c},
+		{0xac00, 0xd7af}, {0xf900, 0xfaff}, {0xfe10, 0xfe6b}, {0xff01, 0xff60},
+		{0xffe0, 0xffe6}, {0x16fe0, 0x1b2fb}, {0x1f004, 0x1f004}, {0x1f0cf, 0x1f0cf},
+		{0x1f18e, 0x1f18e}, {0x1f191, 0x1f19a}, {0x1f200, 0x1f320}, {0x1f32d, 0x1f335},
+		{0x1f337, 0x1f37c}, {0x1f37e, 0x1f393}, {0x1f3a0, 0x1f3ca}, {0x1f3cf, 0x1f3d3},
+		{0x1f3e0, 0x1f3f0}, {0x1f3f4, 0x1f3f4}, {0x1f3f8, 0x1f43e}, {0x1f440, 0x1f440},
+		{0x1f442, 0x1f4fc}, {0x1f4ff, 0x1f53d}, {0x1f54b, 0x1f54e}, {0x1f550, 0x1f567},
+		{0x1f57a, 0x1f57a}, {0x1f595, 0x1f596}, {0x1f5a4, 0x1f5a4}, {0x1f5fb, 0x1f64f},
+		{0x1f680, 0x1f6c5}, {0x1f6cc, 0x1f6cc}, {0x1f6d0, 0x1f6d2}, {0x1f6d5, 0x1f6df},
+		{0x1f6eb, 0x1f6ec}, {0x1f6f4, 0x1f6fc}, {0x1f7e0, 0x1f7f0}, {0x1f90c, 0x1f93a},
+		{0x1f93c, 0x1f945}, {0x1f947, 0x1f9ff}, {0x1fa70, 0x1faf8}, {0x20000, 0x3fffd},
+	}
+
+	for _, wr := range ranges {
+		for _, r := range []rune{wr.lo, wr.hi} {
+			if got := runeWidth(r); got != 2 {
+				t.Errorf("runeWidth(%#x / %q) = %d, want 2", r, r, got)
+			}
+		}
+		for _, r := range []rune{wr.lo - 1, wr.hi + 1} {
+			if got := runeWidth(r); got == 2 {
+				t.Errorf("runeWidth(%#x / %q) = 2, want narrow or zero-width", r, r)
+			}
 		}
 	}
 }
