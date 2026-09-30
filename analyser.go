@@ -233,6 +233,11 @@ func markNestedLogicalAssumptions(node ast.Node, ignoredAssumptions map[ast.Node
 	mark(binary.Y)
 }
 
+// markCommaOkConditionNodes traverses the condition expression to exempt
+// the comma-ok ok / !ok guard and its logical mixes with other conditions.
+// It stops traversal at non-logical boundaries (calls, composite literals,
+// closures, and index expressions) so assumptions nested within those
+// expressions are not suppressed.
 func markCommaOkConditionNodes(init ast.Stmt, cond ast.Expr, ignored, ignoredAssumptions map[ast.Node]struct{}, scope identifierScope) {
 	okName := commaOkVarName(init)
 	if okName == "" || cond == nil {
@@ -240,7 +245,8 @@ func markCommaOkConditionNodes(init ast.Stmt, cond ast.Expr, ignored, ignoredAss
 	}
 
 	ast.Inspect(cond, func(node ast.Node) bool {
-		if _, isFuncLit := node.(*ast.FuncLit); isFuncLit {
+		switch node.(type) {
+		case *ast.CallExpr, *ast.CompositeLit, *ast.FuncLit, *ast.IndexExpr:
 			return false
 		}
 		if isCommaOkNotNode(node, okName) {

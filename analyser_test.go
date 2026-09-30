@@ -2182,3 +2182,192 @@ func check() bool {
 		t.Errorf("assumptions = %#v, want %#v", result.Assumptions(), want)
 	}
 }
+
+func TestAnalyserFlagsAssumptionsInCallLiteralsAndIndicesWithinCommaOkCondition(t *testing.T) {
+	tests := []struct {
+		name            string
+		code            string
+		wantAssumptions int
+		wantMessages    []string
+	}{
+		{
+			name: "unary not in function call argument",
+			code: `package main
+
+func pred(b bool) bool { return b }
+
+func F(x any) {
+	if _, ok := x.(*int); pred(!ok) {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantMessages:    []string{"if _, ok := x.(*int); pred(!ok) {"},
+		},
+		{
+			name: "logical mix in function call argument",
+			code: `package main
+
+func pred(b bool) bool { return b }
+
+func F(x any, a int) {
+	if _, ok := x.(*int); pred(ok && a == 1) {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantMessages:    []string{"if _, ok := x.(*int); pred(ok && a == 1) {"},
+		},
+		{
+			name: "unary not in composite literal",
+			code: `package main
+
+type box struct{ b bool }
+
+func F(x any) {
+	if _, ok := x.(*int); (box{b: !ok}).b {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantMessages:    []string{"if _, ok := x.(*int); (box{b: !ok}).b {"},
+		},
+		{
+			name: "unary not in index expression",
+			code: `package main
+
+func idx(b bool) int { return 0 }
+
+func F(x any, arr []bool) {
+	if _, ok := x.(*int); arr[idx(!ok)] {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantMessages:    []string{"if _, ok := x.(*int); arr[idx(!ok)] {"},
+		},
+		{
+			name: "logical mix in composite literal",
+			code: `package main
+
+type box struct{ b bool }
+
+func F(x any, a int) {
+	if _, ok := x.(*int); (box{b: ok && a == 1}).b {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantMessages:    []string{"if _, ok := x.(*int); (box{b: ok && a == 1}).b {"},
+		},
+		{
+			name: "unary not in map index expression",
+			code: `package main
+
+func F(x any, m map[bool]bool) {
+	if _, ok := x.(*int); m[!ok] {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantMessages:    []string{"if _, ok := x.(*int); m[!ok] {"},
+		},
+		{
+			name: "logical mix in map index expression",
+			code: `package main
+
+func F(x any, m map[bool]bool, a int) {
+	if _, ok := x.(*int); m[ok && a == 1] {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantMessages:    []string{"if _, ok := x.(*int); m[ok && a == 1] {"},
+		},
+		{
+			name: "map index init with call argument",
+			code: `package main
+
+func pred(b bool) bool { return b }
+
+func F(m map[string]int) {
+	if _, ok := m["k"]; pred(!ok) {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantMessages:    []string{`if _, ok := m["k"]; pred(!ok) {`},
+		},
+		{
+			name: "channel receive init with call argument",
+			code: `package main
+
+func pred(b bool) bool { return b }
+
+func F(ch <-chan int) {
+	if _, ok := <-ch; pred(!ok) {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantMessages:    []string{"if _, ok := <-ch; pred(!ok) {"},
+		},
+		{
+			name: "assignment equals form with call argument",
+			code: `package main
+
+func pred(b bool) bool { return b }
+
+func F(x any) {
+	var ok bool
+	if _, ok = x.(*int); pred(!ok) {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantMessages:    []string{"if _, ok = x.(*int); pred(!ok) {"},
+		},
+		{
+			name: "for statement with channel receive init and call argument",
+			code: `package main
+
+func pred(b bool) bool { return b }
+
+func F(ch <-chan int) {
+	for _, ok := <-ch; pred(!ok); {
+	}
+}
+`,
+			wantAssumptions: 1,
+			wantMessages:    []string{"for _, ok := <-ch; pred(!ok); {"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "repro.go")
+			if err := os.WriteFile(src, []byte(tt.code), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			analyser := NewAnalyser(NewDetector(), nil)
+			result, err := analyser.Analyse([]string{src})
+			if err != nil {
+				t.Fatalf("analyse: %v", err)
+			}
+
+			if got := result.AssumptionsCount(); got != tt.wantAssumptions {
+				t.Errorf("AssumptionsCount() = %d, want %d; assumptions: %#v", got, tt.wantAssumptions, result.Assumptions())
+			}
+			if tt.wantAssumptions > 0 {
+				got := make([]string, 0, len(result.Assumptions()))
+				for _, a := range result.Assumptions() {
+					got = append(got, a.Message)
+				}
+				if !reflect.DeepEqual(got, tt.wantMessages) {
+					t.Errorf("messages = %#v, want %#v", got, tt.wantMessages)
+				}
+			}
+		})
+	}
+}
