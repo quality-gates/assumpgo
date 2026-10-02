@@ -95,12 +95,9 @@ func walkGoFiles(path string, pattern bool, visited []os.FileInfo, paths *[]stri
 }
 
 // buildGoFile reports whether name in dir is a Go source file that the
-// current build includes. The file must be a regular file with a .go suffix,
-// its name must not start with '.' or '_', and it must match the default build
-// context (current GOOS/GOARCH and build tags). An invalid build directive
-// gives an error. MatchFile rejects names that start with '.' or '_', but it
-// accepts other source files such as .s and .c, so the .go suffix check is
-// necessary.
+// current build includes. An invalid build directive gives an error.
+// MatchFile rejects names that start with '.' or '_'. MatchFile also accepts
+// .s and .c files, thus the .go suffix check is necessary.
 func buildGoFile(dir, name string, info os.FileInfo) (bool, error) {
 	if !info.Mode().IsRegular() {
 		return false, nil

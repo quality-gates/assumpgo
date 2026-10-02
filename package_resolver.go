@@ -139,9 +139,9 @@ func (r *PackageResolver) fileForEntry(dir string, entry os.DirEntry, fset *toke
 }
 
 // contributesConstants reports whether the file at path can contribute package
-// constants. Constant indexing is context for a target and does not select
-// targets, so a file that cannot be read or that has an invalid build
-// directive is skipped. It does not stop the analysis.
+// constants. Constant indexing gives context for a target. It does not select
+// targets. Thus an unreadable file or an invalid build directive does not stop
+// the analysis. The resolver skips that file.
 func contributesConstants(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil {
