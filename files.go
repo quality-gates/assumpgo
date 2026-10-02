@@ -82,7 +82,7 @@ func walkGoFiles(path string, pattern bool, visited []os.FileInfo, paths *[]stri
 			}
 			continue
 		}
-		collect, err := shouldCollectFile(path, entry, childInfo)
+		collect, err := buildGoFile(path, entry.Name(), childInfo)
 		if err != nil {
 			return err
 		}
@@ -94,31 +94,21 @@ func walkGoFiles(path string, pattern bool, visited []os.FileInfo, paths *[]stri
 	return nil
 }
 
-// shouldCollectFile reports whether entry in dir is a regular .go file that
-// matches the build context and is not ignored.
-func shouldCollectFile(dir string, entry os.DirEntry, info os.FileInfo) (bool, error) {
+// buildGoFile reports whether name in dir is a Go source file that the
+// current build includes. The file must be a regular file with a .go suffix,
+// its name must not start with '.' or '_', and it must match the default build
+// context (current GOOS/GOARCH and build tags). An invalid build directive
+// gives an error. MatchFile rejects names that start with '.' or '_', but it
+// accepts other source files such as .s and .c, so the .go suffix check is
+// necessary.
+func buildGoFile(dir, name string, info os.FileInfo) (bool, error) {
 	if !info.Mode().IsRegular() {
 		return false, nil
 	}
-	if ignoredGoFile(entry.Name()) {
+	if !strings.HasSuffix(name, ".go") {
 		return false, nil
 	}
-	if !strings.HasSuffix(entry.Name(), ".go") {
-		return false, nil
-	}
-	return matchGoFile(dir, entry.Name())
-}
-
-// matchGoFile reports whether the Go source file named name in dir matches
-// the default build context (current GOOS/GOARCH and build tags).
-func matchGoFile(dir, name string) (bool, error) {
 	return build.Default.MatchFile(dir, name)
-}
-
-// ignoredGoFile reports whether a file named name is ignored by Go's toolchain
-// because its name starts with '.' or '_'.
-func ignoredGoFile(name string) bool {
-	return strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")
 }
 
 // ignoredByPattern reports whether a directory named name is skipped by a
