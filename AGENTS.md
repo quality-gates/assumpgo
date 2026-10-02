@@ -56,7 +56,8 @@ the tests and `README.md` together. A node is an assumption when it is:
   being analysed, and not files excluded by build constraints), or the variable
   is bound in the statement's init (the comma-ok idiom `if v, ok := x.(*T); ok`
   or inverted guard `if _, ok := x.(*T); !ok` is an assertion, not an
-  assumption);
+  assumption; this extends to every `else if` branch of the same `if`
+  statement unless that branch's own init rebinds the name);
 - a boolean-not of a variable (`!x`);
 - a `&&` / `||` mixing a bare variable with a comparison (`x && x == "test"`,
   `x && y && n == 1`). Operand order and parentheses must not hide a mix;

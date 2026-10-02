@@ -2371,3 +2371,178 @@ func F(ch <-chan int) {
 		})
 	}
 }
+
+func TestAnalyserExtendsCommaOkExemptionToElseIfConditions(t *testing.T) {
+	tests := []struct {
+		name          string
+		code          string
+		wantMessages  []string
+		wantBoolExprs int
+	}{
+		{
+			name: "bare ok",
+			code: `package main
+
+func F(x any) {
+	if v, ok := x.(*int); ok && *v > 0 {
+		_ = v
+	} else if ok {
+		_ = v
+	}
+}
+`,
+			wantBoolExprs: 3,
+		},
+		{
+			name: "inverted ok",
+			code: `package main
+
+func F(x any) {
+	if v, ok := x.(*int); ok && *v > 0 {
+		_ = v
+	} else if !ok {
+		_ = v
+	}
+}
+`,
+			wantBoolExprs: 3,
+		},
+		{
+			name: "ok mixed with strict equality",
+			code: `package main
+
+func F(x any) {
+	if v, ok := x.(*int); ok && *v > 0 {
+		_ = v
+	} else if ok && *v == 0 {
+		_ = v
+	}
+}
+`,
+			wantBoolExprs: 4,
+		},
+		{
+			name: "map lookup assigned",
+			code: `package main
+
+func F(m map[string]int, k string) {
+	var v int
+	var ok bool
+	if v, ok = m[k]; v > 0 {
+	} else if ok {
+	}
+}
+`,
+			wantBoolExprs: 2,
+		},
+		{
+			name: "channel receive across chained else if",
+			code: `package main
+
+func F(ch <-chan int) {
+	if v, ok := <-ch; v > 0 {
+	} else if v < 0 {
+	} else if !ok {
+	}
+}
+`,
+			wantBoolExprs: 3,
+		},
+		{
+			name: "inherited and own comma-ok in one chain",
+			code: `package main
+
+func F(x any, m map[string]int, k string, n int) {
+	if _, ok := x.(int); ok {
+	} else if _, found := m[k]; ok && found && n == 1 {
+	}
+}
+`,
+			wantBoolExprs: 4,
+		},
+		{
+			name: "ok shadowed by else if init",
+			code: `package main
+
+func pred() bool { return true }
+
+func F(x any) {
+	if _, ok := x.(int); ok {
+	} else if ok := pred(); ok {
+	}
+}
+`,
+			wantMessages:  []string{"} else if ok := pred(); ok {"},
+			wantBoolExprs: 2,
+		},
+		{
+			name: "other bare variable in else if",
+			code: `package main
+
+func F(x any, y bool) {
+	if _, ok := x.(int); ok {
+	} else if y {
+	}
+}
+`,
+			wantMessages:  []string{"} else if y {"},
+			wantBoolExprs: 2,
+		},
+		{
+			name: "other variable mixed in else if",
+			code: `package main
+
+func F(x any, y bool, n int) {
+	if _, ok := x.(int); ok {
+	} else if y && n == 1 {
+	}
+}
+`,
+			wantMessages:  []string{"} else if y && n == 1 {"},
+			wantBoolExprs: 3,
+		},
+		{
+			name: "for with comma-ok init and no condition",
+			code: `package main
+
+func F(ch <-chan int) {
+	for _, ok := <-ch; ; {
+		_ = ok
+		break
+	}
+}
+`,
+			wantBoolExprs: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "main.go")
+			if err := os.WriteFile(src, []byte(tt.code), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			analyser := NewAnalyser(NewDetector(), nil)
+			result, err := analyser.Analyse([]string{src})
+			if err != nil {
+				t.Fatalf("analyse: %v", err)
+			}
+
+			got := make([]string, 0, len(result.Assumptions()))
+			for _, a := range result.Assumptions() {
+				got = append(got, a.Message)
+			}
+			want := tt.wantMessages
+			if want == nil {
+				want = []string{}
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("messages = %#v, want %#v", got, want)
+			}
+			if got := result.BoolExpressionsCount(); got != tt.wantBoolExprs {
+				t.Errorf("BoolExpressionsCount() = %d, want %d", got, tt.wantBoolExprs)
+			}
+		})
+	}
+}

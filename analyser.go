@@ -166,6 +166,7 @@ func (a *Analyser) analyseFile(source parsedSource, result *Result, resolver pac
 
 	ignored := make(map[ast.Node]struct{})
 	ignoredAssumptions := make(map[ast.Node]struct{})
+	elseIfOkNames := make(map[*ast.IfStmt][]string)
 
 	ast.Inspect(f, func(node ast.Node) bool {
 		switch n := node.(type) {
@@ -174,13 +175,17 @@ func (a *Analyser) analyseFile(source parsedSource, result *Result, resolver pac
 				ignored[cond] = struct{}{}
 				ignored[n.Cond] = struct{}{}
 			}
-			markCommaOkConditionNodes(n.Init, n.Cond, ignored, ignoredAssumptions, scope)
+			okNames := commaOkNamesInScope(n.Init, elseIfOkNames[n])
+			if elseIf, isElseIf := n.Else.(*ast.IfStmt); isElseIf {
+				elseIfOkNames[elseIf] = okNames
+			}
+			markCommaOkConditionNodes(n, n.Cond, okNames, ignored, ignoredAssumptions, scope)
 		case *ast.ForStmt:
 			if cond := a.detector.invertedCommaOkCond(n.Init, n.Cond); cond != nil {
 				ignored[cond] = struct{}{}
 				ignored[n.Cond] = struct{}{}
 			}
-			markCommaOkConditionNodes(n.Init, n.Cond, ignored, ignoredAssumptions, scope)
+			markCommaOkConditionNodes(n, n.Cond, commaOkNamesInScope(n.Init, nil), ignored, ignoredAssumptions, scope)
 		}
 
 		if _, skip := ignored[node]; skip {
@@ -233,15 +238,49 @@ func markNestedLogicalAssumptions(node ast.Node, ignoredAssumptions map[ast.Node
 	mark(binary.Y)
 }
 
-// markCommaOkConditionNodes traverses the condition expression to exempt
-// the comma-ok ok / !ok guard and its logical mixes with other conditions.
-// It stops traversal at non-logical boundaries (calls, composite literals,
-// closures, and index expressions) so assumptions nested within those
-// expressions are not suppressed.
-func markCommaOkConditionNodes(init ast.Stmt, cond ast.Expr, ignored, ignoredAssumptions map[ast.Node]struct{}, scope identifierScope) {
-	okName := commaOkVarName(init)
-	if okName == "" || cond == nil {
+// commaOkNamesInScope returns the comma-ok ok variables that a condition can
+// use. These are the variables that init binds, plus the inherited variables
+// of an enclosing if statement when the condition is an else-if branch. Go
+// keeps the if init in scope for all else-if branches (issue #125). When init
+// assigns an inherited name again, that name does not hold the comma-ok
+// result, so it is removed.
+func commaOkNamesInScope(init ast.Stmt, inherited []string) []string {
+	var names []string
+	for _, name := range inherited {
+		if !assignsName(init, name) {
+			names = append(names, name)
+		}
+	}
+	if own := commaOkVarName(init); own != "" {
+		names = append(names, own)
+	}
+	return names
+}
+
+func assignsName(init ast.Stmt, name string) bool {
+	assign, ok := init.(*ast.AssignStmt)
+	if !ok {
+		return false
+	}
+	for _, lhs := range assign.Lhs {
+		if isNamedVar(lhs, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// markCommaOkConditionNodes traverses the condition expression of stmt to
+// exempt the comma-ok ok / !ok guard and its logical mixes with other
+// conditions. It stops traversal at non-logical boundaries (calls, composite
+// literals, closures, and index expressions) so assumptions nested within
+// those expressions are not suppressed.
+func markCommaOkConditionNodes(stmt ast.Node, cond ast.Expr, okNames []string, ignored, ignoredAssumptions map[ast.Node]struct{}, scope identifierScope) {
+	if len(okNames) == 0 || cond == nil {
 		return
+	}
+	if isOkVar(cond, okNames) {
+		ignoredAssumptions[stmt] = struct{}{}
 	}
 
 	ast.Inspect(cond, func(node ast.Node) bool {
@@ -249,10 +288,10 @@ func markCommaOkConditionNodes(init ast.Stmt, cond ast.Expr, ignored, ignoredAss
 		case *ast.CallExpr, *ast.CompositeLit, *ast.FuncLit, *ast.IndexExpr:
 			return false
 		}
-		if isCommaOkNotNode(node, okName) {
+		if isCommaOkNotNode(node, okNames) {
 			ignored[node] = struct{}{}
 		}
-		if isCommaOkLogicalNodeInScope(node, okName, scope) {
+		if isCommaOkLogicalNodeInScope(node, okNames, scope) {
 			ignoredAssumptions[node] = struct{}{}
 		}
 		return true
