@@ -32,6 +32,25 @@ func TestPackageResolverFindsConstantsDeclaredInSiblingFiles(t *testing.T) {
 	}
 }
 
+func TestPackageResolverSkipsUnreadableSiblings(t *testing.T) {
+	dir := t.TempDir()
+	uses := filepath.Join(dir, "uses.go")
+	if err := os.WriteFile(filepath.Join(dir, "defs.go"), []byte("package p\n\nconst Ready = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(uses, []byte("package p\n\nfunc check() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "missing.go"), filepath.Join(dir, "dangling.go")); err != nil {
+		t.Fatal(err)
+	}
+
+	resolver := NewPackageResolver()
+	if !resolver.IsPackageConst(uses, "p", "Ready") {
+		t.Error("expected a dangling sibling symlink to be skipped, not to stop constant indexing")
+	}
+}
+
 func TestPackageResolverHonorsBuildConstraintsAndPackageNames(t *testing.T) {
 	dir := t.TempDir()
 	uses := filepath.Join(dir, "uses.go")
