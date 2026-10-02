@@ -208,36 +208,36 @@ func (d *Detector) invertedCommaOkCond(init ast.Stmt, cond ast.Expr) ast.Expr {
 	return unary
 }
 
-// isCommaOkNotNode reports whether node is a boolean-not of the ok variable
+// isCommaOkNotNode reports whether node is a boolean-not of an ok variable
 // bound by a comma-ok assignment.
-func isCommaOkNotNode(node ast.Node, okName string) bool {
+func isCommaOkNotNode(node ast.Node, okNames []string) bool {
 	unary, ok := node.(*ast.UnaryExpr)
-	return ok && unary.Op == token.NOT && isNamedVar(unary.X, okName)
+	return ok && unary.Op == token.NOT && isOkVar(unary.X, okNames)
 }
 
 // isCommaOkLogicalNode reports whether node is a logical expression whose
 // variable-plus-binary assumption comes only from the comma-ok ok variable.
 func isCommaOkLogicalNode(node ast.Node, okName string) bool {
-	return isCommaOkLogicalNodeInScope(node, okName, identifierScope{})
+	return isCommaOkLogicalNodeInScope(node, []string{okName}, identifierScope{})
 }
 
-func isCommaOkLogicalNodeInScope(node ast.Node, okName string, scope identifierScope) bool {
+func isCommaOkLogicalNodeInScope(node ast.Node, okNames []string, scope identifierScope) bool {
 	binary, ok := node.(*ast.BinaryExpr)
 	if !ok || (binary.Op != token.LAND && binary.Op != token.LOR) {
 		return false
 	}
 
-	hasOk, hasOtherVar, hasBinary := commaOkLogicalMix(binary, okName, scope)
+	hasOk, hasOtherVar, hasBinary := commaOkLogicalMix(binary, okNames, scope)
 	return hasOk && hasBinary && !hasOtherVar
 }
 
 // commaOkLogicalMix classifies a logical expression without descending into
 // non-logical binary expressions. Identifiers inside comparisons are operands
 // of the assertion, not bare-variable conditions of their own.
-func commaOkLogicalMix(expr ast.Node, okName string, scope identifierScope) (hasOk, hasOtherVar, hasBinary bool) {
+func commaOkLogicalMix(expr ast.Node, okNames []string, scope identifierScope) (hasOk, hasOtherVar, hasBinary bool) {
 	switch e := unwrap(expr).(type) {
 	case *ast.Ident:
-		if isNamedVar(e, okName) {
+		if isOkVar(e, okNames) {
 			return true, false, false
 		}
 		return false, isVarIdentInScope(e, scope), false
@@ -246,8 +246,8 @@ func commaOkLogicalMix(expr ast.Node, okName string, scope identifierScope) (has
 			return false, false, true
 		}
 
-		ok1, var1, binary1 := commaOkLogicalMix(e.X, okName, scope)
-		ok2, var2, binary2 := commaOkLogicalMix(e.Y, okName, scope)
+		ok1, var1, binary1 := commaOkLogicalMix(e.X, okNames, scope)
+		ok2, var2, binary2 := commaOkLogicalMix(e.Y, okNames, scope)
 		return ok1 || ok2, var1 || var2, binary1 || binary2
 	}
 
@@ -257,6 +257,15 @@ func commaOkLogicalMix(expr ast.Node, okName string, scope identifierScope) (has
 func isNamedVar(expr ast.Node, name string) bool {
 	ident, ok := unwrap(expr).(*ast.Ident)
 	return ok && ident.Name == name
+}
+
+func isOkVar(expr ast.Node, okNames []string) bool {
+	for _, name := range okNames {
+		if isNamedVar(expr, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // commaOkVarName returns the name of the ok variable bound by a comma-ok

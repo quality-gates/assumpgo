@@ -106,4 +106,8 @@ including their inverted guards (`!ok`) — binds its variable in the `if` or
 `for` init statement and is therefore **not** treated as a bare-variable
 assumption. This remains true when `ok` or `!ok` is combined with another
 condition, such as `ok && v != nil`; the separate `!=` comparison is still
-reported.
+reported. Because Go keeps the `if` init in scope for every `else if` branch of
+the same statement, `} else if ok {`, `} else if !ok {`, and mixes such as
+`} else if ok && *v == 0 {` are assertions too. An `else if` init that binds
+`ok` again (`} else if ok := f(); ok {`) replaces the comma-ok `ok`, so that
+branch is checked as usual.
