@@ -2183,6 +2183,41 @@ func check() bool {
 	}
 }
 
+func TestAnalyserDoesNotBorrowConstantsFromBuildExcludedTargets(t *testing.T) {
+	dir := t.TempDir()
+	uses := filepath.Join(dir, "uses.go")
+	ignored := filepath.Join(dir, "ignored.go")
+	bad := filepath.Join(dir, "bad.go")
+
+	// Targets that the current build excludes are still analysed, but their
+	// constants must not hide assumptions in the package. An invalid build
+	// directive must not stop the analysis.
+	sources := map[string]string{
+		uses:    "package p\n\nfunc check() bool {\n\tif IgnoredReady {\n\t\treturn true\n\t}\n\tif BadReady {\n\t\treturn true\n\t}\n\treturn false\n}\n",
+		ignored: "//go:build ignore\n\npackage p\n\nconst IgnoredReady = true\n",
+		bad:     "//go:build (\n\npackage p\n\nconst BadReady = true\n",
+	}
+	for path, body := range sources {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	analyser := NewAnalyser(NewDetector(), nil)
+	result, err := analyser.Analyse([]string{ignored, bad, uses})
+	if err != nil {
+		t.Fatalf("analyse: %v", err)
+	}
+
+	want := []Assumption{
+		{File: uses, Line: 4, Message: "if IgnoredReady {"},
+		{File: uses, Line: 7, Message: "if BadReady {"},
+	}
+	if !reflect.DeepEqual(result.Assumptions(), want) {
+		t.Errorf("assumptions = %#v, want %#v", result.Assumptions(), want)
+	}
+}
+
 func TestAnalyserFlagsAssumptionsInCallLiteralsAndIndicesWithinCommaOkCondition(t *testing.T) {
 	tests := []struct {
 		name            string

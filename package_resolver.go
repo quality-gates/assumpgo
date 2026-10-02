@@ -6,7 +6,6 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // packageConstLookup answers whether an identifier names a package-level
@@ -58,12 +57,7 @@ func (r *PackageResolver) addParsedFile(filePath string, file *ast.File) {
 	}
 
 	canonicalPath := physicalPath(filePath)
-	name := filepath.Base(canonicalPath)
-	if ignoredGoFile(name) || !strings.HasSuffix(name, ".go") {
-		return
-	}
-	match, err := matchGoFile(filepath.Dir(canonicalPath), name)
-	if err != nil || !match {
+	if !contributesConstants(canonicalPath) {
 		return
 	}
 
@@ -127,17 +121,8 @@ func (r *PackageResolver) addDirectoryFiles(dir string, byPackage map[string]map
 }
 
 func (r *PackageResolver) fileForEntry(dir string, entry os.DirEntry, fset *token.FileSet) *ast.File {
-	if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || ignoredGoFile(entry.Name()) {
-		return nil
-	}
-
 	path := filepath.Join(dir, entry.Name())
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil
-	}
-	match, err := matchGoFile(dir, entry.Name())
-	if err != nil || !match {
+	if !contributesConstants(path) {
 		return nil
 	}
 
@@ -146,11 +131,24 @@ func (r *PackageResolver) fileForEntry(dir string, entry os.DirEntry, fset *toke
 		return file
 	}
 
-	file, err = parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+	file, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
 	if err != nil {
 		return nil
 	}
 	return file
+}
+
+// contributesConstants reports whether the file at path can contribute package
+// constants. Constant indexing gives context for a target. It does not select
+// targets. Thus an unreadable file or an invalid build directive does not stop
+// the analysis. The resolver skips that file.
+func contributesConstants(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	included, err := buildGoFile(filepath.Dir(path), filepath.Base(path), info)
+	return err == nil && included
 }
 
 func addFileConstants(byPackage map[string]map[string]struct{}, file *ast.File) {

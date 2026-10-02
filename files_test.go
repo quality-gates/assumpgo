@@ -846,34 +846,57 @@ func TestCollectGoFilesWalkReturnsErrorOnInvalidBuildDirective(t *testing.T) {
 	}
 }
 
-func TestMatchGoFile(t *testing.T) {
+func TestBuildGoFile(t *testing.T) {
 	dir := t.TempDir()
-	matching := filepath.Join(dir, "match.go")
-	ignored := filepath.Join(dir, "ignore.go")
-	bad := filepath.Join(dir, "bad.go")
-
-	if err := os.WriteFile(matching, []byte("package p\n"), 0o644); err != nil {
+	files := map[string]string{
+		"match.go":        "package p\n",
+		".hidden.go":      "package p\n",
+		"_private.go":     "package p\n",
+		"notes.txt":       "package p\n",
+		"asm.s":           "package p\n",
+		"ignore.go":       "//go:build ignore\n\npackage p\n",
+		"bad.go":          "//go:build (\n\npackage p\n",
+		".bad_hidden.go":  "//go:build (\n\npackage p\n",
+		"bad_suffix.goxx": "//go:build (\n\npackage p\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "pkg.go"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(ignored, []byte("//go:build ignore\n\npackage p\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(bad, []byte("//go:build (\n\npackage p\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 
-	m, err := matchGoFile(dir, "match.go")
-	if err != nil || !m {
-		t.Errorf("matchGoFile(match.go) = %v, %v, want true, nil", m, err)
+	tests := []struct {
+		name    string
+		want    bool
+		wantErr bool
+	}{
+		{name: "match.go", want: true},
+		{name: ".hidden.go"},
+		{name: "_private.go"},
+		{name: "notes.txt"},
+		{name: "asm.s"},
+		{name: "pkg.go"},
+		{name: "ignore.go"},
+		{name: "bad.go", wantErr: true},
+		{name: ".bad_hidden.go"},
+		{name: "bad_suffix.goxx"},
 	}
-
-	m, err = matchGoFile(dir, "ignore.go")
-	if err != nil || m {
-		t.Errorf("matchGoFile(ignore.go) = %v, %v, want false, nil", m, err)
-	}
-
-	m, err = matchGoFile(dir, "bad.go")
-	if err == nil {
-		t.Errorf("matchGoFile(bad.go) expected error, got %v, %v", m, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info, err := os.Stat(filepath.Join(dir, tt.name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := buildGoFile(dir, tt.name, info)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("buildGoFile(%q) error = %v, wantErr %v", tt.name, err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("buildGoFile(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
 	}
 }
