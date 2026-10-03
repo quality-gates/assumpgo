@@ -1,0 +1,45 @@
+== J1: Comma-ok inheritance and boundaries in else-if chains and calls
+-- else-if comma-ok chain --
+assumpgo analyser v0.1.9 by quality-gates
+
+0 out of 3 boolean expressions are assumptions (0%)
+exit=0
+-- call/closure boundary in else-if --
+assumpgo analyser v0.1.9 by quality-gates
+
+-------------------------------------------------------------------
+| file          | line | message                                  |
+===================================================================
+| boundaries.go | 8    | } else if func() bool { return !ok }() { |
+-------------------------------------------------------------------
+
+1 out of 3 boolean expressions are assumptions (33%)
+exit=110
+== J2: Directory walks, build tags, and non-regular files
+-- directory walk with ignored files, platform files, and FIFO --
+assumpgo analyser v0.1.9 by quality-gates
+
+0 out of 1 boolean expressions are assumptions (0%)
+exit=0
+-- overwrite protection for -output --
+error: refusing to overwrite analysed source file: pkg/main.go
+exit=100
+== J3: Pretty table alignment, control escapes, and checkstyle XML
+-- pretty output with wide characters and escapes --
+assumpgo analyser v0.1.9 by quality-gates
+
+--------------------------------------------------------------------
+| file      | line | message                                       |
+====================================================================
+| visual.go | 4    | if x != nil { // 🇬🇧 ❤️ ☕ ䷀ \x1b[31mred\x1b[0m |
+--------------------------------------------------------------------
+
+1 out of 2 boolean expressions are assumptions (50%)
+wcswidth=68 --------------------------------------------------------------------
+wcswidth=68 | file      | line | message                                       |
+wcswidth=68 ====================================================================
+wcswidth=68 | visual.go | 4    | if x != nil { // 🇬🇧 ❤️ ☕ ䷀ \x1b[31mred\x1b[0m |
+wcswidth=68 --------------------------------------------------------------------
+Alignment verified: all 5 lines have width 68
+-- checkstyle XML validity with xmllint --
+xmllint exit=0
