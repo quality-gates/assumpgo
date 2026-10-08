@@ -7,6 +7,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 
 	assumpgo "github.com/quality-gates/assumpgo"
@@ -24,7 +25,7 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-func run(args []string, stdout, stderr *os.File) int {
+func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("assumpgo", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 

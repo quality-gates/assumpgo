@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -10,34 +11,13 @@ import (
 	"testing"
 )
 
-// runCapture invokes run with real temp files for stdout/stderr (run takes
-// *os.File) and returns their contents plus the exit code.
+// runCapture invokes run with in-memory stdout/stderr buffers and returns their
+// contents plus the exit code.
 func runCapture(t *testing.T, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
-	dir := t.TempDir()
-	outF, err := os.Create(filepath.Join(dir, "stdout"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer outF.Close()
-	errF, err := os.Create(filepath.Join(dir, "stderr"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer errF.Close()
-
-	code = run(args, outF, errF)
-
-	return readFile(t, outF.Name()), readFile(t, errF.Name()), code
-}
-
-func readFile(t *testing.T, name string) string {
-	t.Helper()
-	b, err := os.ReadFile(name)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(b)
+	var outBuf, errBuf bytes.Buffer
+	code = run(args, &outBuf, &errBuf)
+	return outBuf.String(), errBuf.String(), code
 }
 
 func fixture(name string) string {
