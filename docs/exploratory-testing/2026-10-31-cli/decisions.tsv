@@ -1,0 +1,6 @@
+ts	phase	decision	why	evidence	result
+2026-10-31T17:31:58Z	scope	Selected CLI detection, discovery, and output journeys	These cover the documented gate and its CI report	docs/usage.md	Three journeys exercised
+2026-10-31T17:31:58Z	investigation	Replayed custom build tags twice and filed issue 135	The configured Go build included a file that the scan missed	docs/exploratory-testing/2026-10-31-cli/replay-output.txt	Confirmed false clean; documentation not yet shipped
+2026-10-31T17:56:58Z	review	Recorded two runs and narrowed the build-tag claim	Independent review found the first report overstated the documented contract	docs/exploratory-testing/2026-10-31-cli.md	Evidence and scope corrected
+2026-10-31T17:56:58Z	verification	Ran build, tests, vet and static checks; attempted mutation gate	Check the unchanged product and report before the PR	docs/exploratory-testing/2026-10-31-cli/replay-output.txt	Static checks passed; mutation run timed out and restored files
+2026-10-31T17:58:36Z	correction	The verification row links only to replay evidence	The build and static-check output was not saved with that artifact	docs/exploratory-testing/2026-10-31-cli.md	Report states the local results and mutation timeout
