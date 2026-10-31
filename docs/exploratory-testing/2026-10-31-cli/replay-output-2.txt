@@ -1,0 +1,115 @@
+=== readiness ===
+
+$ assumpgo testdata/fixtures/dog.go
+assumpgo analyser v0.1.10 by quality-gates
+
+-----------------------------------------------------
+| file                     | line | message         |
+=====================================================
+| testdata/fixtures/dog.go | 12   | if dog != nil { |
+-----------------------------------------------------
+
+1 out of 2 boolean expressions are assumptions (50%)
+exit=110
+=== detection, ordinary and corrected ===
+
+$ assumpgo main.go
+assumpgo analyser v0.1.10 by quality-gates
+
+-----------------------------------
+| file    | line | message        |
+===================================
+| main.go | 6    | if ready {}    |
+| main.go | 7    | if x != nil {} |
+-----------------------------------
+
+2 out of 8 boolean expressions are assumptions (25%)
+exit=110
+
+$ assumpgo clean.go
+assumpgo analyser v0.1.10 by quality-gates
+
+0 out of 1 boolean expressions are assumptions (0%)
+exit=0
+=== discovery, exclusion and alias ===
+
+$ assumpgo ./...
+assumpgo analyser v0.1.10 by quality-gates
+
+-------------------------------------------------------------------
+| file            | line | message                                |
+===================================================================
+| hidden/other.go | 2    | func check(ready bool) { if ready {} } |
+| main.go         | 6    | if ready {}                            |
+| main.go         | 7    | if x != nil {}                         |
+-------------------------------------------------------------------
+
+3 out of 10 boolean expressions are assumptions (30%)
+exit=110
+
+$ assumpgo -exclude hidden ./...
+assumpgo analyser v0.1.10 by quality-gates
+
+-----------------------------------
+| file    | line | message        |
+===================================
+| main.go | 6    | if ready {}    |
+| main.go | 7    | if x != nil {} |
+-----------------------------------
+
+2 out of 9 boolean expressions are assumptions (22%)
+exit=110
+
+$ assumpgo main.go alias.go
+assumpgo analyser v0.1.10 by quality-gates
+
+-----------------------------------
+| file    | line | message        |
+===================================
+| main.go | 6    | if ready {}    |
+| main.go | 7    | if x != nil {} |
+-----------------------------------
+
+2 out of 8 boolean expressions are assumptions (25%)
+exit=110
+=== XML, file output, overwrite protection ===
+
+$ assumpgo -format xml -output report.xml main.go
+exit=110
+xml root= checkstyle files= 1 errors= 2
+
+$ assumpgo -output alias.go main.go
+error: refusing to overwrite analysed source file: alias.go
+exit=100
+source unchanged
+
+$ assumpgo -format XML main.go
+error: unknown format "XML" (want pretty or xml)
+exit=100
+=== build-tag variation ===
+go list default: [main.go]
+go list with GOFLAGS=-tags=special: [main.go special.go]
+
+$ assumpgo ./tagged
+assumpgo analyser v0.1.10 by quality-gates
+
+0 out of 1 boolean expressions are assumptions (0%)
+exit=0
+
+$ GOFLAGS=-tags=special assumpgo ./tagged
+assumpgo analyser v0.1.10 by quality-gates
+
+0 out of 1 boolean expressions are assumptions (0%)
+exit=0
+
+$ assumpgo tagged/special.go
+assumpgo analyser v0.1.10 by quality-gates
+
+-----------------------------------------------------------------------
+| file              | line | message                                  |
+=======================================================================
+| tagged/special.go | 4    | func special(ready bool) { if ready {} } |
+-----------------------------------------------------------------------
+
+1 out of 1 boolean expressions are assumptions (100%)
+exit=110
