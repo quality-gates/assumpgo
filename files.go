@@ -2,7 +2,6 @@ package assumpgo
 
 import (
 	"errors"
-	"go/build"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +16,9 @@ import (
 // revisiting a directory, skipping files whose names start with . or _ or
 // that are excluded by build constraints.
 func CollectGoFiles(fromPath string) ([]string, error) {
+	if _, err := currentBuildContext(); err != nil {
+		return nil, err
+	}
 	pathToCollect := fromPath
 	cleanPattern := filepath.Clean(fromPath)
 	pattern := filepath.Base(cleanPattern) == "..."
@@ -105,7 +107,11 @@ func buildGoFile(dir, name string, info os.FileInfo) (bool, error) {
 	if !strings.HasSuffix(name, ".go") {
 		return false, nil
 	}
-	return build.Default.MatchFile(dir, name)
+	context, err := currentBuildContext()
+	if err != nil {
+		return false, err
+	}
+	return context.MatchFile(dir, name)
 }
 
 // ignoredByPattern reports whether a directory named name is skipped by a

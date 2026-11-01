@@ -87,10 +87,10 @@ func TestMissingPathIsUsageError(t *testing.T) {
 func TestGOFLAGSBuildTags(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
-		"main.go": "package p\nfunc clean(x bool) { if x == true {} }\n",
-		"special.go": "//go:build special\n\npackage p\nfunc flagged(x bool) { if x {} }\n",
+		"main.go":     "package p\nfunc clean(x bool) { if x == true {} }\n",
+		"special.go":  "//go:build special\n\npackage p\nfunc flagged(x bool) { if x {} }\n",
 		"constant.go": "//go:build special\n\npackage p\nconst enabled = true\n",
-		"use.go": "package p\nfunc check() { if enabled {} }\n",
+		"use.go":      "package p\nfunc check() { if enabled {} }\n",
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
@@ -105,6 +105,8 @@ func TestGOFLAGSBuildTags(t *testing.T) {
 		{"tagged directory", "-tags=special", dir, "special.go", exitAssumption},
 		{"tagged constant", "-tags=special", filepath.Join(dir, "use.go"), "0 out of 1 boolean expressions are assumptions", exitOK},
 		{"multiple tags", "-mod=readonly '-tags=other special'", dir, "special.go", exitAssumption},
+		{"comma separated tags", "--tags=other,,special", dir, "special.go", exitAssumption},
+		{"quoted tag value", "-tags='special'", dir, "special.go", exitAssumption},
 		{"last tags flag wins", "-tags=special --tags=other", dir, "use.go", exitAssumption},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -115,6 +117,22 @@ func TestGOFLAGSBuildTags(t *testing.T) {
 			}
 			if tc.name == "tagged directory" && strings.Contains(stdout, "use.go") {
 				t.Fatalf("tagged constant was not resolved: %s", stdout)
+			}
+		})
+	}
+}
+
+func TestInvalidGOFLAGSReturnsUsageError(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "example.go")
+	if err := os.WriteFile(file, []byte("package p\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, flags := range []string{"-tags", "'-tags=special", "-tags='special"} {
+		t.Run(flags, func(t *testing.T) {
+			t.Setenv("GOFLAGS", flags)
+			_, stderr, code := runCapture(t, file)
+			if code != exitUsage || !strings.Contains(stderr, "GOFLAGS") {
+				t.Fatalf("exit = %d, stderr = %q; want usage error for GOFLAGS", code, stderr)
 			}
 		})
 	}
