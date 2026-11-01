@@ -84,6 +84,42 @@ func TestMissingPathIsUsageError(t *testing.T) {
 	}
 }
 
+func TestGOFLAGSBuildTags(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"main.go": "package p\nfunc clean(x bool) { if x == true {} }\n",
+		"special.go": "//go:build special\n\npackage p\nfunc flagged(x bool) { if x {} }\n",
+		"constant.go": "//go:build special\n\npackage p\nconst enabled = true\n",
+		"use.go": "package p\nfunc check() { if enabled {} }\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		name, flags, target, want string
+		code                      int
+	}{
+		{"default directory", "", dir, "use.go", exitAssumption},
+		{"tagged directory", "-tags=special", dir, "special.go", exitAssumption},
+		{"tagged constant", "-tags=special", filepath.Join(dir, "use.go"), "0 out of 1 boolean expressions are assumptions", exitOK},
+		{"multiple tags", "-mod=readonly '-tags=other special'", dir, "special.go", exitAssumption},
+		{"last tags flag wins", "-tags=special --tags=other", dir, "use.go", exitAssumption},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GOFLAGS", tc.flags)
+			stdout, stderr, code := runCapture(t, tc.target)
+			if code != tc.code || !strings.Contains(stdout, tc.want) {
+				t.Fatalf("exit = %d, want %d; output = %q; stderr = %q", code, tc.code, stdout, stderr)
+			}
+			if tc.name == "tagged directory" && strings.Contains(stdout, "use.go") {
+				t.Fatalf("tagged constant was not resolved: %s", stdout)
+			}
+		})
+	}
+}
+
 func TestMultipleTargetFiles(t *testing.T) {
 	stdout, _, code := runCapture(t, fixture("cat.go"), fixture("dog.go"))
 	if code != exitAssumption {
