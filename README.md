@@ -66,7 +66,9 @@ excluded by Go build constraints (such as `*_windows.go` on other systems or
 `//go:build ignore`), are skipped during directory walks, matching Go's toolchain
 behavior; naming such a file directly still analyses it. The same constraints
 apply when resolving package-level constants: a `const` in a file the current
-build excludes does not hide a bare-variable assumption.
+build excludes does not hide a bare-variable assumption. Set build tags with
+`GOFLAGS=-tags=integration assumpgo ./...`. assumpgo reads `GOFLAGS` from the
+environment, not from settings saved with `go env -w`.
 
 There is no ruleset file: the analyzer’s pattern set is fixed. See
 [docs/usage.md](docs/usage.md) for what counts as an assumption.
