@@ -145,7 +145,8 @@ when cutting a release.
 
 - **The assumpgo binary's own exit codes** (distinct from mutago's gate exit
   code 4): `0` no assumptions found, `110` one or more assumptions found, `100`
-  usage error. The `110` code is what makes the tool usable as a CI gate.
+  usage or operational error, including unparseable or unreadable source files.
+  The `110` code is what makes the tool usable as a CI gate.
 - **Tests are white-box** (`package assumpgo`), so they can exercise unexported
   helpers like `readLine` and `addAssumption` directly. Keep them that way.
 - **Edit files one at a time using Read then Edit.** Do not use scripts or
