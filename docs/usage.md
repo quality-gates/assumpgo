@@ -55,7 +55,7 @@ assumpgo analyser v0.1.11 by quality-gates
 | ---: | :--- |
 | 0 | No assumptions found |
 | 110 | One or more assumptions found |
-| 100 | Usage error (e.g. missing path, unknown `-format`) |
+| 100 | Usage or operational error, such as a missing path, unknown `-format`, or unparseable or unreadable source file |
 
 ## What counts as an assumption
 
