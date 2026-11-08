@@ -2,11 +2,11 @@
 set -eu
 unset GOFLAGS
 root=$(git rev-parse --show-toplevel)
-work="$root/.scratch/replay"
+work=$(mktemp -d "$root/.scratch/replay.XXXXXX")
 bin="$root/.scratch/bin/assumpgo"
 cleanup() { rm -rf "$work"; }
-trap cleanup EXIT HUP INT TERM
-cleanup
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
 mkdir -p "$work/project/sub" "$work/project/testdata" "$work/tagged"
 cd "$work"
 printf 'package p\nfunc f(ready bool, n int) {\n if ready {}\n if n != 0 {}\n if n == 0 {}\n}\n' > project/main.go
@@ -21,7 +21,12 @@ run() {
   "$@" > stdout.txt 2> stderr.txt
   status=$?
   set -e
-  printf '$'; printf ' %q' "$@"; printf '\nexit=%s\n' "$status"
+  printf '$'
+  for arg in "$@"; do
+    if [ "$arg" = "$bin" ]; then arg=assumpgo; fi
+    printf ' %q' "$arg"
+  done
+  printf '\nexit=%s\n' "$status"
   cat stdout.txt stderr.txt
   if [ "$status" -ne "$expected" ]; then echo "expected exit $expected" >&2; exit 1; fi
 }
@@ -32,7 +37,7 @@ run 0 "$bin" project/sub/clean.go
 grep -q '0 out of 1 boolean expressions' stdout.txt
 run 110 "$bin" shadow.go
 grep -q '1 out of 1 boolean expressions' stdout.txt
-run 110 "$bin" "$root/testdata/fixtures/dog.go"
+run 110 "$bin" ../../testdata/fixtures/dog.go
 grep -q 'if dog != nil' stdout.txt
 printf '== Selection: pattern, exclusion, and build tags ==\n'
 run 110 "$bin" 'project/...'
@@ -45,7 +50,7 @@ grep -q special.go stdout.txt
 printf '== CI output: XML, invalid format, overwrite protection ==\n'
 run 110 "$bin" -format xml -output report.xml project/main.go
 [ ! -s stdout.txt ]
-python3 -c 'import xml.etree.ElementTree as E; r=E.parse("report.xml").getroot(); assert r.tag=="checkstyle"; e=r.findall("./file/error"); assert len(e)==2; print("XML parsed: 1 file, 2 findings, lines", ",".join(x.attrib["line"] for x in e))'
+python3 -c 'import xml.etree.ElementTree as E; r=E.parse("report.xml").getroot(); assert r.tag=="checkstyle"; files=r.findall("./file"); assert len(files)==1; e=files[0].findall("error"); assert [x.attrib["line"] for x in e]==["3", "4"]; print("XML parsed: 1 file, 2 findings, lines", ",".join(x.attrib["line"] for x in e))'
 run 100 "$bin" -format XML project/main.go
 cp project/main.go original.go
 ln project/main.go alias.go
