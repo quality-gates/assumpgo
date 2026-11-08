@@ -102,7 +102,7 @@ script: assumpgo -format xml -output gl-assumpgo.xml ./...
 ## Maintainers
 
 Usage reference: [docs/usage.md](docs/usage.md).
-Exploratory testing reports: [docs/exploratory-testing/](docs/exploratory-testing/).
+Exploratory testing reports: [docs/exploratory-testing/](docs/exploratory-testing/). The [2026-11-08 CLI pass](docs/exploratory-testing/2026-11-08-cli.md) covers gating, file selection, and XML output.
 
 Development checks:
 
