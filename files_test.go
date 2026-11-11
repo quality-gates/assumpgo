@@ -155,6 +155,68 @@ func TestCollectGoFilesDoesNotRevisitCyclicDirectorySymlink(t *testing.T) {
 	}
 }
 
+func TestCollectGoFilesDoesNotRevisitSiblingAliases(t *testing.T) {
+	for _, depth := range []int{1, 4, 8} {
+		t.Run(string(rune('0'+depth)), func(t *testing.T) {
+			root := t.TempDir()
+			physical, first := root, root
+			for i := 0; i < depth; i++ {
+				if err := os.Mkdir(filepath.Join(physical, "pkg"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink("pkg", filepath.Join(physical, "alias")); err != nil {
+					t.Fatal(err)
+				}
+				physical = filepath.Join(physical, "pkg")
+				first = filepath.Join(first, "alias")
+			}
+			for _, name := range []string{"a.go", "b.go", "c.go"} {
+				if err := os.WriteFile(filepath.Join(physical, name), []byte("package p\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := CollectGoFiles(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []string{filepath.Join(first, "a.go"), filepath.Join(first, "b.go"), filepath.Join(first, "c.go")}
+			if strings.Join(got, "\n") != strings.Join(want, "\n") {
+				t.Errorf("depth %d: got %d paths; want %v", depth, len(got), want)
+			}
+		})
+	}
+}
+
+func TestDirectorySetIdentityAndFallback(t *testing.T) {
+	root := t.TempDir()
+	other := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(root, link); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias, err := os.Stat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	distinct, err := os.Stat(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []func(os.FileInfo) (directoryKey, bool){
+		directoryIdentity,
+		func(os.FileInfo) (directoryKey, bool) { return directoryKey{}, false },
+	} {
+		set := directorySet{keys: make(map[directoryKey]struct{}), key: key}
+		if set.seen(first) || !set.seen(alias) || set.seen(distinct) || !set.seen(distinct) {
+			t.Error("directory identity did not distinguish aliases from distinct directories")
+		}
+	}
+}
+
 func TestCollectGoFilesIgnoresNonGo(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "keep.go"), []byte("package x\n"), 0o644); err != nil {
