@@ -40,7 +40,8 @@ func CollectGoFiles(fromPath string) ([]string, error) {
 	}
 
 	var paths []string
-	err = walkGoFiles(cleanPath, pattern, nil, &paths)
+	visited := directorySet{keys: make(map[directoryKey]struct{}), key: directoryIdentity}
+	err = walkGoFiles(cleanPath, pattern, &visited, &paths)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +49,7 @@ func CollectGoFiles(fromPath string) ([]string, error) {
 	return paths, nil
 }
 
-func walkGoFiles(path string, pattern bool, visited []os.FileInfo, paths *[]string) error {
+func walkGoFiles(path string, pattern bool, visited *directorySet, paths *[]string) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
@@ -57,10 +58,9 @@ func walkGoFiles(path string, pattern bool, visited []os.FileInfo, paths *[]stri
 		return nil
 	}
 
-	if containsSameFile(visited, info) {
+	if visited.seen(info) {
 		return nil
 	}
-	visited = append(visited, info)
 
 	entries, err := os.ReadDir(path)
 	if err != nil {
@@ -94,6 +94,43 @@ func walkGoFiles(path string, pattern bool, visited []os.FileInfo, paths *[]stri
 	}
 
 	return nil
+}
+
+type directoryKey struct {
+	device uint64
+	inode  uint64
+}
+
+// directorySet uses filesystem identities when available and retains the
+// os.SameFile fallback for platforms or file information without a key.
+type directorySet struct {
+	keys  map[directoryKey]struct{}
+	infos []os.FileInfo
+	noKey []os.FileInfo
+	key   func(os.FileInfo) (directoryKey, bool)
+}
+
+func (s *directorySet) seen(info os.FileInfo) bool {
+	key, ok := s.key(info)
+	if ok {
+		if _, found := s.keys[key]; found {
+			return true
+		}
+	}
+	compare := s.noKey
+	if !ok {
+		compare = s.infos
+	}
+	if containsSameFile(compare, info) {
+		return true
+	}
+	if ok {
+		s.keys[key] = struct{}{}
+	} else {
+		s.noKey = append(s.noKey, info)
+	}
+	s.infos = append(s.infos, info)
+	return false
 }
 
 // buildGoFile reports whether name in dir is a Go source file that the
