@@ -25,7 +25,10 @@ type identifierScope struct {
 	resolver packageConstLookup
 	filePath string
 	pkgName  string
+	logical  map[ast.Node]logicalSummary
 }
+
+type logicalSummary struct{ variable, binary bool }
 
 func (s identifierScope) isPackageConst(name string) bool {
 	return s.resolver != nil && s.resolver.IsPackageConst(s.filePath, s.pkgName, name)
@@ -118,6 +121,14 @@ func (d *Detector) bidirectionalCheck(n *ast.BinaryExpr, scope identifierScope) 
 // logicalMix walks a `&&`/`||` tree and reports whether it contains a bare
 // variable operand and a non-logical binary operand (a comparison).
 func logicalMix(expr ast.Node, scope identifierScope) (hasVar, hasCmp bool) {
+	if summary, ok := scope.logical[expr]; ok {
+		return summary.variable, summary.binary
+	}
+	defer func() {
+		if scope.logical != nil {
+			scope.logical[expr] = logicalSummary{hasVar, hasCmp}
+		}
+	}()
 	switch e := unwrap(expr).(type) {
 	case *ast.Ident:
 		return isVarIdentInScope(e, scope), false
@@ -222,12 +233,18 @@ func isCommaOkLogicalNode(node ast.Node, okName string) bool {
 }
 
 func isCommaOkLogicalNodeInScope(node ast.Node, okNames []string, scope identifierScope) bool {
+	return isCommaOkLogicalNodeCached(node, okNames, scope, nil)
+}
+
+type commaOkSummary struct{ ok, variable, binary bool }
+
+func isCommaOkLogicalNodeCached(node ast.Node, okNames []string, scope identifierScope, cache map[ast.Node]commaOkSummary) bool {
 	binary, ok := node.(*ast.BinaryExpr)
 	if !ok || (binary.Op != token.LAND && binary.Op != token.LOR) {
 		return false
 	}
 
-	hasOk, hasOtherVar, hasBinary := commaOkLogicalMix(binary, okNames, scope)
+	hasOk, hasOtherVar, hasBinary := commaOkLogicalMixCached(binary, okNames, scope, cache)
 	return hasOk && hasBinary && !hasOtherVar
 }
 
@@ -235,6 +252,18 @@ func isCommaOkLogicalNodeInScope(node ast.Node, okNames []string, scope identifi
 // non-logical binary expressions. Identifiers inside comparisons are operands
 // of the assertion, not bare-variable conditions of their own.
 func commaOkLogicalMix(expr ast.Node, okNames []string, scope identifierScope) (hasOk, hasOtherVar, hasBinary bool) {
+	return commaOkLogicalMixCached(expr, okNames, scope, nil)
+}
+
+func commaOkLogicalMixCached(expr ast.Node, okNames []string, scope identifierScope, cache map[ast.Node]commaOkSummary) (hasOk, hasOtherVar, hasBinary bool) {
+	if summary, ok := cache[expr]; ok {
+		return summary.ok, summary.variable, summary.binary
+	}
+	defer func() {
+		if cache != nil {
+			cache[expr] = commaOkSummary{hasOk, hasOtherVar, hasBinary}
+		}
+	}()
 	switch e := unwrap(expr).(type) {
 	case *ast.Ident:
 		if isOkVar(e, okNames) {
@@ -246,8 +275,8 @@ func commaOkLogicalMix(expr ast.Node, okNames []string, scope identifierScope) (
 			return false, false, true
 		}
 
-		ok1, var1, binary1 := commaOkLogicalMix(e.X, okNames, scope)
-		ok2, var2, binary2 := commaOkLogicalMix(e.Y, okNames, scope)
+		ok1, var1, binary1 := commaOkLogicalMixCached(e.X, okNames, scope, cache)
+		ok2, var2, binary2 := commaOkLogicalMixCached(e.Y, okNames, scope, cache)
 		return ok1 || ok2, var1 || var2, binary1 || binary2
 	}
 

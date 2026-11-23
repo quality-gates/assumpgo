@@ -162,7 +162,7 @@ func (a *Analyser) analyseFile(source parsedSource, result *Result, resolver pac
 	fset := source.fset
 	f := source.file
 	lines := strings.Split(string(source.src), "\n")
-	scope := identifierScope{resolver: resolver, filePath: path, pkgName: f.Name.Name}
+	scope := identifierScope{resolver: resolver, filePath: path, pkgName: f.Name.Name, logical: make(map[ast.Node]logicalSummary)}
 
 	ignored := make(map[ast.Node]struct{})
 	ignoredAssumptions := make(map[ast.Node]struct{})
@@ -282,6 +282,7 @@ func markCommaOkConditionNodes(stmt ast.Node, cond ast.Expr, okNames []string, i
 	if isOkVar(cond, okNames) {
 		ignoredAssumptions[stmt] = struct{}{}
 	}
+	cache := make(map[ast.Node]commaOkSummary)
 
 	ast.Inspect(cond, func(node ast.Node) bool {
 		switch node.(type) {
@@ -291,7 +292,7 @@ func markCommaOkConditionNodes(stmt ast.Node, cond ast.Expr, okNames []string, i
 		if isCommaOkNotNode(node, okNames) {
 			ignored[node] = struct{}{}
 		}
-		if isCommaOkLogicalNodeInScope(node, okNames, scope) {
+		if isCommaOkLogicalNodeCached(node, okNames, scope, cache) {
 			ignoredAssumptions[node] = struct{}{}
 		}
 		return true
