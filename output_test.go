@@ -312,6 +312,61 @@ func TestPrettyOutputEscapesTerminalControls(t *testing.T) {
 	}
 }
 
+func TestPrettyOutputEscapesBidiControls(t *testing.T) {
+	r := resultWith(
+		Assumption{File: "report\u202efake.go", Line: 4, Message: "if dog != nil { // \u202eevil\u202c"},
+		Assumption{File: "embed\u202a.go", Line: 6, Message: "if cat != nil { // \u202b\u202d\u202e"},
+		Assumption{File: "isolate\u2066.go", Line: 8, Message: "if x != nil { // \u2066\u2067\u2068\u2069"},
+		Assumption{File: "format\u200e.go", Line: 9, Message: "if y != nil { // \u200e\u200f\u2060\u00ad\U0001d173"},
+		Assumption{File: "plain.go", Line: 10, Message: "if z != nil { // caf\u00e9 \u2615"},
+	)
+
+	var buf bytes.Buffer
+	if err := (PrettyOutput{}).Output(&buf, r); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	out := buf.String()
+
+	for _, r := range []rune{'\u202a', '\u202b', '\u202c', '\u202d', '\u202e', '\u2066', '\u2067', '\u2068', '\u2069', '\u200e', '\u200f', '\u2060', '\u00ad', '\U0001d173'} {
+		if strings.ContainsRune(out, r) {
+			t.Errorf("pretty output contains raw bidi/format control %#U:\n%q", r, out)
+		}
+	}
+	for _, want := range []string{
+		`report\u202efake.go`,
+		`if dog != nil { // \u202eevil\u202c`,
+		`embed\u202a.go`,
+		`if cat != nil { // \u202b\u202d\u202e`,
+		`isolate\u2066.go`,
+		`if x != nil { // \u2066\u2067\u2068\u2069`,
+		`format\u200e.go`,
+		`if y != nil { // \u200e\u200f\u2060\xad\U0001d173`,
+		// Near-miss: printable letters/symbols are not format controls and stay raw.
+		"caf\u00e9 \u2615",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("pretty output missing escaped text %q:\n%s", want, out)
+		}
+	}
+
+	var tableLines []string
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			break
+		}
+		tableLines = append(tableLines, line)
+	}
+	if len(tableLines) != 9 {
+		t.Fatalf("expected 9 table lines, got %d:\n%s", len(tableLines), out)
+	}
+	wantWidth := stringWidth(tableLines[0])
+	for i, line := range tableLines {
+		if got := stringWidth(line); got != wantWidth {
+			t.Errorf("table line %d display width = %d, want %d:\n%q", i, got, wantWidth, line)
+		}
+	}
+}
+
 func TestRuneWidth(t *testing.T) {
 	tests := []struct {
 		r    rune
@@ -646,8 +701,10 @@ func TestPrettyOutputInteriorTabAlignment(t *testing.T) {
 // TestPrettyOutputZeroWidthFormatAlignment guards the reported bug: a message
 // containing a format character (U+200B zero-width space, U+FEFF BOM) occupies
 // zero terminal columns, so the row must not shift its pipes out of alignment.
-// Like TestPrettyOutputCombiningMarkAlignment, the check measures display
-// width independently of stringWidth, the code under test.
+// Format characters are now escaped to visible ASCII (see
+// TestPrettyOutputEscapesBidiControls), so the escaped text is what must stay
+// aligned. Like TestPrettyOutputCombiningMarkAlignment, the check measures
+// display width independently of stringWidth, the code under test.
 func TestPrettyOutputZeroWidthFormatAlignment(t *testing.T) {
 	r := resultWith(
 		Assumption{File: "zwsp.go", Line: 4, Message: "if dog != nil { // \u200b"},
