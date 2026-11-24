@@ -57,7 +57,10 @@ func (o PrettyOutput) Output(w io.Writer, result *Result) error {
 
 // escapeTerminalControls makes control characters visible in table cells so
 // source text cannot change the terminal state or layout. Tabs retain the
-// existing one-space rendering.
+// existing one-space rendering. Format characters (unicode.Cf, such as the
+// bidirectional controls U+202A-U+202E and U+2066-U+2069) are escaped too:
+// they are not Cc controls, but a raw one can reorder the rendered row
+// (Trojan-Source style copying) even though it occupies zero columns.
 func escapeTerminalControls(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
@@ -65,7 +68,7 @@ func escapeTerminalControls(s string) string {
 		switch {
 		case r == '\t':
 			b.WriteByte(' ')
-		case unicode.IsControl(r):
+		case unicode.IsControl(r) || unicode.Is(unicode.Cf, r):
 			switch {
 			case r <= 0xff:
 				fmt.Fprintf(&b, `\x%02x`, r)

@@ -19,9 +19,10 @@ assumpgo ./...
 That scans the tree and prints assumption findings plus the assumption ratio.
 Exit `0` is clean, `110` means assumptions found, and `100` means a usage or
 operational error, including unparseable or unreadable source files.
-The pretty table renders control characters in file paths and source lines as
-visible escapes such as `\x1b` for ESC; tabs remain spaces. This keeps scanned
-text from changing terminal state and preserves table alignment.
+The pretty table renders control and format characters in file paths and source
+lines as visible escapes such as `\x1b` for ESC and `\u202e` for a bidirectional
+override; tabs remain spaces. This keeps scanned text from changing terminal
+state or visual order and preserves table alignment.
 
 Common next steps:
 
