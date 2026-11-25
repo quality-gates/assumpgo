@@ -71,7 +71,10 @@ behavior; naming such a file directly still analyses it. The same constraints
 apply when resolving package-level constants: a `const` in a file the current
 build excludes does not hide a bare-variable assumption. Set build tags with
 `GOFLAGS=-tags=integration assumpgo ./...`. assumpgo reads `GOFLAGS` from the
-environment, not from settings saved with `go env -w`.
+environment, not from settings saved with `go env -w`. A bare non-flag token
+in `GOFLAGS` (for example `GOFLAGS='special'`) is a usage error (exit 100),
+matching the go tool's `non-flag` diagnosis; dash-prefixed flags assumpgo
+does not interpret are ignored.
 
 There is no ruleset file: the analyzer’s pattern set is fixed. See
 [docs/usage.md](docs/usage.md) for what counts as an assumption.
