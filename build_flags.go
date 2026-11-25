@@ -14,6 +14,9 @@ func currentBuildContext() (build.Context, error) {
 		return context, fmt.Errorf("parsing GOFLAGS: %w", err)
 	}
 	for _, flag := range flags {
+		if !strings.HasPrefix(flag, "-") {
+			return context, fmt.Errorf("parsing GOFLAGS: non-flag %q", flag)
+		}
 		name, value, hasValue := strings.Cut(flag, "=")
 		if name != "-tags" && name != "--tags" {
 			continue

@@ -61,3 +61,48 @@ func TestCollectGoFilesRejectsMalformedGOFLAGS(t *testing.T) {
 		})
 	}
 }
+
+func TestCollectGoFilesRejectsBareGOFLAGSToken(t *testing.T) {
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		flags string
+		want  string
+	}{
+		{"-tags= special", `non-flag "special"`},
+		{"-tags=special foo", `non-flag "foo"`},
+		{"special", `non-flag "special"`},
+		{"-mod=mod special", `non-flag "special"`},
+		{"'special'", `non-flag "special"`},
+		{"=special", `non-flag "=special"`},
+	} {
+		t.Run(tc.flags, func(t *testing.T) {
+			t.Setenv("GOFLAGS", tc.flags)
+			_, err := CollectGoFiles(dir)
+			if err == nil {
+				t.Fatalf("error = nil, want GOFLAGS non-flag error for %q", tc.flags)
+			}
+			if !strings.Contains(err.Error(), "parsing GOFLAGS: "+tc.want) {
+				t.Fatalf("error = %q, want parsing GOFLAGS: %s", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestCollectGoFilesIgnoresDashGOFLAGS(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "base.go"), []byte("package p\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, flags := range []string{"-mod=mod", "-tags=special -mod=mod", "-unknownflag=value"} {
+		t.Run(flags, func(t *testing.T) {
+			t.Setenv("GOFLAGS", flags)
+			files, err := CollectGoFiles(dir)
+			if err != nil {
+				t.Fatalf("error = %v, want dash-prefixed GOFLAGS to be ignored", err)
+			}
+			if len(files) != 1 {
+				t.Fatalf("files = %v, want [base.go]", files)
+			}
+		})
+	}
+}

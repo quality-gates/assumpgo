@@ -127,12 +127,28 @@ func TestInvalidGOFLAGSReturnsUsageError(t *testing.T) {
 	if err := os.WriteFile(file, []byte("package p\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, flags := range []string{"-tags", "'-tags=special", "-tags='special"} {
+	for _, flags := range []string{"-tags", "'-tags=special", "-tags='special", "-tags= special", "-tags=special foo", "special"} {
 		t.Run(flags, func(t *testing.T) {
 			t.Setenv("GOFLAGS", flags)
 			_, stderr, code := runCapture(t, file)
 			if code != exitUsage || !strings.Contains(stderr, "GOFLAGS") {
 				t.Fatalf("exit = %d, stderr = %q; want usage error for GOFLAGS", code, stderr)
+			}
+		})
+	}
+	for _, tc := range []struct {
+		flags string
+		want  string
+	}{
+		{"-tags= special", `non-flag "special"`},
+		{"-tags=special foo", `non-flag "foo"`},
+		{"special", `non-flag "special"`},
+	} {
+		t.Run("bare "+tc.flags, func(t *testing.T) {
+			t.Setenv("GOFLAGS", tc.flags)
+			_, stderr, code := runCapture(t, file)
+			if code != exitUsage || !strings.Contains(stderr, "parsing GOFLAGS: "+tc.want) {
+				t.Fatalf("exit = %d, stderr = %q; want parsing GOFLAGS: %s", code, stderr, tc.want)
 			}
 		})
 	}
