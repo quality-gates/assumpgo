@@ -82,6 +82,8 @@ func NewAnalyser(detector *Detector, excludes []string) *Analyser {
 }
 
 // Analyse parses and inspects each file, returning the aggregated Result.
+// Non-regular files (such as named pipes) are skipped, so Analyse does not
+// block in os.ReadFile on a file with no writer (issue #146).
 func (a *Analyser) Analyse(files []string) (*Result, error) {
 	resolver := NewPackageResolver()
 	var sourceFiles []parsedSource
@@ -95,6 +97,9 @@ func (a *Analyser) Analyse(files []string) (*Result, error) {
 
 		info, statErr := os.Stat(clean)
 		if statErr == nil {
+			if !info.Mode().IsRegular() {
+				continue
+			}
 			if containsSameFile(analysed, info) {
 				continue
 			}
