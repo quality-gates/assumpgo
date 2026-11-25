@@ -886,6 +886,74 @@ func TestAnalyseDoesNotReadNamedPipesDuringConstantDiscovery(t *testing.T) {
 	}
 }
 
+// TestAnalyseSkipsNamedPipePassedDirectly ensures that Analyse skips a
+// named pipe passed directly and does not block in os.ReadFile (issue #146).
+func TestAnalyseSkipsNamedPipePassedDirectly(t *testing.T) {
+	dir := t.TempDir()
+	pipe := filepath.Join(dir, "pipe.go")
+	if err := syscall.Mkfifo(pipe, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	type analysisResult struct {
+		result *Result
+		err    error
+	}
+	done := make(chan analysisResult, 1)
+	go func() {
+		result, err := NewAnalyser(NewDetector(), nil).Analyse([]string{pipe})
+		done <- analysisResult{result: result, err: err}
+	}()
+
+	select {
+	case outcome := <-done:
+		if outcome.err != nil {
+			t.Fatalf("Analyse: %v", outcome.err)
+		}
+		if got := outcome.result.AssumptionsCount(); got != 0 {
+			t.Errorf("AssumptionsCount() = %d, want 0", got)
+		}
+		if got := outcome.result.BoolExpressionsCount(); got != 0 {
+			t.Errorf("BoolExpressionsCount() = %d, want 0", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Analyse blocked on a named pipe passed directly")
+	}
+}
+
+// TestAnalyseSkipsNamedPipeButAnalysesRegularFile ensures that a skipped
+// named pipe does not halt analysis of the files that follow it.
+func TestAnalyseSkipsNamedPipeButAnalysesRegularFile(t *testing.T) {
+	dir := t.TempDir()
+	pipe := filepath.Join(dir, "pipe.go")
+	if err := syscall.Mkfifo(pipe, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dog := filepath.Join("testdata", "fixtures", "dog.go")
+
+	type analysisResult struct {
+		result *Result
+		err    error
+	}
+	done := make(chan analysisResult, 1)
+	go func() {
+		result, err := NewAnalyser(NewDetector(), nil).Analyse([]string{pipe, dog})
+		done <- analysisResult{result: result, err: err}
+	}()
+
+	select {
+	case outcome := <-done:
+		if outcome.err != nil {
+			t.Fatalf("Analyse: %v", outcome.err)
+		}
+		if got := outcome.result.AssumptionsCount(); got != 1 {
+			t.Errorf("AssumptionsCount() = %d, want 1 (dog.go must still be analysed)", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Analyse blocked on a named pipe passed directly")
+	}
+}
+
 // TestAnalyseExcludeContinues ensures an excluded file is skipped without
 // halting analysis of the files that follow it.
 func TestAnalyseExcludeContinues(t *testing.T) {
